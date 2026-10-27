@@ -26,9 +26,10 @@
       const curOk = cur && cur.days > 0.9, prvOk = prv && prv.days > 0.9;
       money = `<div class="group money"><div class="lbl"><span class="sw" style="background:var(--s-money)"></span>${new Date(last.t).getMonth() + 1}월 정산 예상 현금</div>
         <div class="big num">${acct && acct.expectedMoney != null ? fmt(acct.expectedMoney) : '–'}<small>원</small></div>
-        ${fc ? `<div class="fc"><span>월말 예상 <b class="num">≈ ${fmt(fc.value)}원</b></span><span class="num">${sfmt(fc.perDay)}원/일</span></div>` : ''}</div>
+        ${fc ? `<div class="fc"><span>월말 예상 <b class="num">≈ ${fmt(fc.value)}원</b></span><span class="num">${sfmt(fc.perDay)}원/일</span></div>` : ''}
+        ${(() => { const g = (D.settings.goals || {})[H.monthKey(last.t) + ':money'], p = H.goalPlan(fc, g); if (!p) return ''; return `<div class="gl"><div class="gb"><div style="width:${Math.min(100, p.pct * 100).toFixed(1)}%"></div></div><div class="fc"><span>목표 ${Math.floor(p.pct * 100)}%</span><span class="${p.likely ? 'up' : 'down'}">${p.reached ? '✓ 달성' : p.likely ? '✓ 지금 속도면 달성' : `하루 ${sfmt(p.perDay)}원 필요`}</span></div></div>`; })()}</div>
         <div class="group mini"><div><div class="l">최근 24시간 대화</div><div class="v num">${curOk ? sfmt(cur.v) : '–'}${curOk && prvOk && prv.v > 0 ? ` <span class="small ${cur.v >= prv.v ? 'up' : 'down'}">${cur.v >= prv.v ? '▲' : '▼'} ${Math.abs(Math.round((cur.v / prv.v - 1) * 100))}%</span>` : ''}</div></div><div><div class="l">그 전 24시간</div><div class="v num">${prvOk ? sfmt(prv.v) : '–'}</div></div></div>`;
-    } else money = `<div class="group money"><div class="lbl">아직 기록이 없어요</div><div class="sub small" style="margin-top:4px">크랙에 로그인한 상태에서 스냅샷을 받아 보세요. 예전 흥행판 기록은 대시보드의 기록 메뉴에서 가져올 수 있어요.</div></div>`;
+    } else money = `<div class="group money"><div class="lbl">아직 기록이 없어요</div><div class="sub small" style="margin-top:4px">크랙에 로그인한 상태에서 스냅샷을 받아 보세요.</div></div>`;
     const btn = run.busy ? '받는 중…' : L && L.hard ? `쉬는 중 (${Math.ceil(L.ms / 60000)}분)` : '스냅샷 받기';
     $('#pop').innerHTML = `<div class="hd"><img src="icons/32.png" width="20" height="20" alt=""><b>펄스</b><button class="st" id="login" title="크랙 열기"><span class="dot ${ST.loggedIn ? 'ok' : 'no'}"></span>${ST.loggedIn ? '크랙 로그인됨' : '로그인 필요'}</button></div>
       ${money}

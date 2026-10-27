@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "펄스 Pulse",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "크랙 작품의 대화·좋아요·정산 예상을 날마다 쌓아서 추이로 보여 줘요.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArjrd6/GoRbWURP2igiJcqCz/TONW79OJVz2kLyVnyf22fypB2+3p7W8gjsxAVElcTFgZXMnC709ge7kRdqg6HnI90h7UflbW96kWcqJpHgVgTAGJyLdWF0jodn1JNVlRyhnY06jvnrfEEcgwDFJQfkp8wDdHn+hQly34fEB5eemjYr3srRJuf6OOcXUivJjF/NnViY56XK3HJbCtYXr03AhhZoRh+MWLw4H6vm4t00eqI9GLQTfdHfCy+bA0/nzS1LtcT2UJJD67HEU9YP4BNUjH75rnaKgNyQTtKI2J1uigaymoGdTRu48YyyvNHwt2myqNKeOT5DG/jktiBwjBzQIDAQAB",
   "icons": {
