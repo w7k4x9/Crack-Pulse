@@ -162,7 +162,6 @@ async function run() {
     await folder.removeEntry(STAGE, { recursive: true }).catch(() => {});
     await chrome.storage.local.set({ [APPLIED]: { from: manifest.version, to: next.version, at: Date.now(), notes: info.notes || [] } });
     progress(1, '다시 켜는 중…');
-    location.hash = 'done';
     setTimeout(() => chrome.runtime.reload(), 300);
   } catch (e) {
     if (folder) await folder.removeEntry(STAGE, { recursive: true }).catch(() => {});
