@@ -168,8 +168,10 @@
     const nd = P && P.nextPayoutDate ? Date.parse(P.nextPayoutDate) : null, dleft = nd ? Math.ceil((H.dayStart(nd) - H.dayStart(Date.now())) / H.DAY) : null;
     const mName = new Date(M.S[M.S.length - 1].t).getMonth() + 1, pl = H.PERIODS[UI.period].label;
     const kpi = (cls, lbl, v, sub, href) => `<a class="kpi ${cls}" ${href ? `href="${href}"` : ''}><div class="lbl">${lbl}</div><div class="v num">${v}</div><div class="s">${sub}</div></a>`;
-    const list = M.fams.filter(visFilter).filter(f => f.inc != null).sort((a, b) => (b.inc || 0) - (a.inc || 0)), top = list.slice(0, 7);
-    return `<div class="kpis">
+    const list = M.fams.filter(visFilter).filter(f => f.inc > 0).sort((a, b) => (b.inc || 0) - (a.inc || 0)), top = list.slice(0, 7);
+    const span = R.end - R.start, allZero = (!dMsg || !dMsg.v) && (!dMoney || !dMoney.v);
+    const notice = span < 6 * 3600000 ? `<div class="notice"><b>기록이 ${span < 3600000 ? Math.max(1, Math.round(span / 60000)) + '분' : (Math.round(span / 360000) / 10) + '시간'}치뿐이에요.</b> ${allZero ? '크랙의 대화 수와 정산 예상은 실시간이 아니라 몇 시간마다 한꺼번에 갱신돼서, 짧은 간격이면 0으로 보일 수 있어요.' : '기록이 쌓일수록 하루 단위 추이가 정확해져요.'} 자동 스냅샷을 하루 2~3번으로 켜 두면 알아서 쌓여요.</div>` : '';
+    return notice + `<div class="kpis">
         ${kpi('k-money', `<span class="sw" style="background:var(--s-money)"></span>${mName}월 정산 예상`, lastMoney != null ? `${fmt(lastMoney)}<small>원</small>` : '–', fc ? `월말 ≈ <b>${man(fc.value + gAdd)}</b>${gAdd ? ' <span class="faint">지원금 포함</span>' : ''}` : '기록이 더 필요해요', '#revenue')}
         ${kpi('', `<span class="sw" style="background:var(--s-msg)"></span>${pl} 대화`, dMsg ? sfmt(dMsg.v) : '–', dMsg ? `하루 ${sfmt(dMsg.perDay)}${mom ? ` · <span title="${momTitle(mom)}">${momHtml(mom)}</span>` : ''}` : '')}
         ${kpi('', `<span class="sw" style="background:var(--s-money)"></span>${pl} 늘어난 현금`, dMoney ? `${sfmt(dMoney.v)}<small>원</small>` : '–', dMoney ? `하루 ${sfmt(dMoney.perDay)}원` : '')}
@@ -184,7 +186,7 @@
         </div>
         <div class="group ov-rank">
           <div class="ov-h"><span class="t">작품 흐름</span><a class="link small" href="#works">모두 보기</a></div>
-          ${top.length ? top.map(f => `<div class="ov-r" data-fam="${esc(f.key)}" tabindex="0"><div class="nm"><b>${esc(f.name)}</b><span class="sub small num">하루 ${sfmt(f.perDay)}</span></div><span class="sp">${C.spark(f.spark, COL('msg'), 60, 20)}</span><span class="mo small" title="${momTitle(f.mom)}">${momHtml(f.mom)}</span></div>`).join('') : '<div class="ov-r sub">이 기간에 늘어난 작품이 없어요</div>'}
+          ${top.length ? top.map(f => `<div class="ov-r" data-fam="${esc(f.key)}" tabindex="0"><div class="nm"><b>${esc(f.name)}</b><span class="sub small num">하루 ${sfmt(f.perDay)}</span></div><span class="sp">${C.spark(f.spark, COL('msg'), 60, 20)}</span><span class="mo small" title="${momTitle(f.mom)}">${momHtml(f.mom)}</span></div>`).join('') : '<div class="ov-r sub" style="display:block">아직 이 기간에 늘어난 작품이 없어요. 다음 스냅샷부터 보여요.</div>'}
         </div>
       </div>`;
   }
