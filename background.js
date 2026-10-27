@@ -113,6 +113,52 @@ async function fetchSnapshot(token) {
   return { snap: H.normSnap({ snapshot_id: H.idOf(now), captured_at: now.toISOString(), account, works }), accountWhy, failed: tried - filled };
 }
 
+// ---------- 오리지널 매입일: 작품 댓글에서 내가 처음 단 댓글 시각 ----------
+// 작품마다 한 번만 찾고 기억함 (grantDates). 성인 인증 403은 막힘으로 보지 않음, 429만 막힘
+let GRANT_BUSY = false;
+async function commentsGet(url, token) {
+  const ac = new AbortController(); const to = setTimeout(() => ac.abort(), 30000);
+  try {
+    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' }, signal: ac.signal, credentials: 'omit', cache: 'no-store' });
+    if (r.status === 429) { const e = new Error('BLOCKED 429'); e.blocked = true; throw e; }
+    let json = null; try { json = await r.json(); } catch (e) {}
+    return { status: r.status, json };
+  } finally { clearTimeout(to); }
+}
+async function findGrantDates({ force = false } = {}) {
+  if (GRANT_BUSY) return { ok: false, error: '이미 찾는 중이에요.' };
+  const m = await meta(); if ((m.blockedUntil || 0) > Date.now()) return { ok: false, error: '크랙이 요청을 막아서 쉬는 중이에요.' };
+  const token = await getToken(); if (!token) return { ok: false, login: true, error: '크랙에 로그인되어 있지 않아요.' };
+  const { snaps = [], grantDates = {} } = await get(['snaps', 'grantDates']);
+  if (!snaps.length) return { ok: true, found: 0 };
+  const fams = H.families(snaps, true).filter(f => f.original && (force || !grantDates[f.key] || !grantDates[f.key].at));
+  GRANT_BUSY = true; let found = 0;
+  try {
+    for (let i = 0; i < fams.length; i++) {
+      const f = fams[i]; let best = null, denied = 0;
+      chrome.runtime.sendMessage({ type: 'grantProgress', text: `댓글 확인 중 ${i + 1}/${fams.length}` }).catch(() => {});
+      for (const w of f.members.filter(x => x.sourceId)) {
+        let cur = null, pages = 0;
+        do {
+          const r = await commentsGet(`${API}/${w.type === 'character' ? 'characters' : 'stories'}/${w.sourceId}/comments?sort=createdAt&limit=50` + (cur ? '&cursor=' + encodeURIComponent(cur) : ''), token);
+          if (r.status !== 200) { if (r.status === 403) denied++; break; }
+          const d = (r.json && r.json.data) || {};
+          (d.comments || []).forEach(c => { if (c.isCreator && c.createdAt && (!best || c.createdAt < best.at)) best = { at: c.createdAt, text: String(c.content || '').replace(/\s+/g, ' ').slice(0, 40) }; });
+          cur = d.nextCursor; pages++;
+          await sleep(250);
+        } while (cur && pages < 80);
+      }
+      grantDates[f.key] = best ? { at: best.at, text: best.text, checkedAt: Date.now() } : { at: null, denied: !!denied, checkedAt: Date.now() };
+      if (best) found++;
+      await set({ grantDates });
+    }
+    return { ok: true, found, checked: fams.length };
+  } catch (e) {
+    if (e.blocked) { await setMeta({ blockedUntil: Date.now() + BLOCK_HOURS * 3600000 }); return { ok: false, blocked: true, error: '크랙이 요청을 막은 것 같아요. 3시간 쉬어요.' }; }
+    return { ok: false, error: String(e.message || e) };
+  } finally { GRANT_BUSY = false; chrome.runtime.sendMessage({ type: 'grantProgress', text: '' }).catch(() => {}); }
+}
+
 // ---------- 스냅샷 받기 ----------
 async function lockInfo() {
   const m = await meta(), now = Date.now();
@@ -137,6 +183,7 @@ async function takeSnapshot({ force = false, auto = false } = {}) {
     await set({ snaps: all, ledger: H.rebuildLedger(all, ledger) });
     await setMeta({ lastTaken: res.snap.t, lastError: null, lastResult: { at: res.snap.t, count: res.snap.works.length, account: !!res.snap.account, accountWhy: res.accountWhy, failed: res.failed, auto } });
     badge('');
+    setTimeout(() => findGrantDates().catch(() => {}), 3000); // 새 오리지널이 있으면 매입일을 찾아 둠
     return { ok: true, id: res.snap.id, count: res.snap.works.length, account: !!res.snap.account, accountWhy: res.accountWhy };
   } catch (e) {
     const msg = String(e.message || e);
@@ -188,6 +235,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     }
     if (msg.type === 'openCrack') { await chrome.tabs.create({ url: SITE }); return { ok: true }; }
     if (msg.type === 'openDashboard') { await chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html' + (msg.hash || '')) }); return { ok: true }; }
+    if (msg.type === 'findGrantDates') return findGrantDates({ force: !!msg.force });
     if (msg.type === 'updateStatus') return msg.force ? self.PulseUpdate.check({ force: true }) : self.PulseUpdate.status();
     if (msg.type === 'openUpdate') { await chrome.tabs.create({ url: chrome.runtime.getURL('update.html') }); return { ok: true }; }
     if (msg.type === 'clearError') { await setMeta({ lastError: null }); badge(''); return { ok: true }; }

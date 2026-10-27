@@ -21,11 +21,12 @@
   const send = msg => hasChrome && chrome.runtime && chrome.runtime.sendMessage ? chrome.runtime.sendMessage(msg) : Promise.resolve(null);
 
   async function load() {
-    const o = await chrome.storage.local.get(['snaps', 'ledger', 'settings', 'meta']);
+    const o = await chrome.storage.local.get(['snaps', 'ledger', 'settings', 'meta', 'grantDates']);
     DATA.snaps = (o.snaps || []).slice().sort((a, b) => a.t - b.t);
     DATA.ledger = o.ledger || null;
     DATA.settings = Object.assign({ auto: 0, theme: 'system' }, o.settings || {});
     DATA.meta = o.meta || {};
+    DATA.grantDates = o.grantDates || {};
     window.hhApplyTheme(DATA.settings.theme);
   }
   let UPD = null;
@@ -55,7 +56,7 @@
     const totals = {};
     ['msg', 'like', 'comment', 'chat'].forEach(k => { totals[k] = H.workPoints(S, allIds, k); });
     const acct = { money: H.accountPoints(S, 'expectedMoney'), cash: H.accountPoints(S, 'expectedCash') };
-    return { S, R, fams, totals, acct, lf, fcMoney: H.forecast(S, 'expectedMoney'), fcCash: H.forecast(S, 'expectedCash'), grant: H.grants(S, DATA.settings.grant) };
+    return { S, R, fams, totals, acct, lf, fcMoney: H.forecast(S, 'expectedMoney'), fcCash: H.forecast(S, 'expectedCash'), grant: H.grants(S, Object.assign({}, DATA.settings.grant, { dates: DATA.grantDates })) };
   }
   function seriesFor(key, R) {
     const M = MODEL;
@@ -264,13 +265,15 @@
     return `<div class="sec-h"><h2>오리지널 지원금</h2><span class="sub">작품당 한 번 · 언세이프와 세이프 버전은 한 작품으로 셈</span></div>
       <div class="group grants">
         <div class="group-row gsum"><div class="grow"><span class="sub">이번 달</span> <b class="num">${G.thisMonth ? '+' + fmt(G.thisMonth) + '원' : '없음'}</b><span class="sep"></span><span class="sub">지금까지</span> <b class="num">${fmt(G.total)}원</b> <span class="sub small">(${G.list.filter(g => !g.off && g.month <= cur).length}작품)</span>${G.upcoming ? `<span class="sep"></span><span class="sub">예정</span> <b class="num">${fmt(G.upcoming)}원</b>` : ''}</div></div>
-        ${G.list.map(g => `<div class="group-row${g.off ? ' off' : ''}"><div class="grow"><b>${esc(g.name)}</b><div class="sub small">${g.flip ? `기록 중 ${C.dlabel(g.flip)}에 오리지널이 됐어요` : g.set ? '직접 정한 달' : `생성 ${esc(g.created || '–')} · 받은 달은 생성 달로 짐작했어요`}</div></div>${st(g)}
+        ${G.list.map(g => `<div class="group-row${g.off ? ' off' : ''}"><div class="grow"><b>${esc(g.name)}</b><div class="sub small">${g.set ? '직접 정한 달' : g.src === 'comment' ? `내 첫 댓글 ${C.tlong(g.comment.t)}${g.comment.text ? ` · 「${esc(g.comment.text)}」` : ''}` : g.src === 'flip' ? `기록 중 ${C.dlabel(g.flip)}에 오리지널이 됐어요` : `생성 ${esc(g.created || '–')} · ${g.denied ? '댓글을 못 읽어서(성인 인증) 생성 달로 짐작했어요' : g.checked ? '내 댓글이 없어서 생성 달로 짐작했어요' : '댓글 확인 전이라 생성 달로 짐작했어요'}`}</div></div>${st(g)}
           <select class="pop-btn" data-gmonth="${esc(g.key)}" aria-label="${esc(g.name)} 지원금 받은 달">${opts(g).map(k => `<option value="${k}"${k === g.month ? ' selected' : ''}>${my(k)}</option>`).join('')}</select>
           <input type="checkbox" class="switch" data-goff="${esc(g.key)}" ${g.off ? '' : 'checked'} title="계산에 넣기" aria-label="${esc(g.name)} 지원금 계산에 넣기"></div>`).join('')}
+        <div class="group-row"><div class="grow">댓글에서 매입일 찾기<div class="sub small">${GRANT_PROG ? esc(GRANT_PROG) : '작품 댓글 중 내가 처음 단 댓글 날짜를 매입일로 써요. 작품마다 한 번만 찾고, 새 오리지널은 스냅샷 뒤에 알아서 찾아요.'}</div></div><button class="btn" id="gFind" ${GRANT_PROG ? 'disabled' : ''}>${G.list.some(g => g.checked) ? '다시 찾기' : '찾기'}</button></div>
         <div class="group-row"><div class="grow">1작품당 금액</div><label class="numin small-in"><input type="text" inputmode="numeric" id="gAmt" value="${fmt(G.amount)}" aria-label="오리지널 지원금 1작품당 금액"><span>원</span></label></div>
         <div class="group-row"><div class="grow">정산 예상 현금에 이미 들어가 있어요<div class="sub small">켜면 지원금을 따로 더하지 않고 "그중 지원금"으로만 보여 줘요. 잘 모르겠으면 꺼 두세요.</div></div><input type="checkbox" class="switch" id="gInc" ${G.included ? 'checked' : ''}></div>
       </div>`;
   }
+  let GRANT_PROG = '';
   async function saveGrant(patch) {
     const g = Object.assign({ months: {}, off: {} }, DATA.settings.grant || {});
     patch(g); await chrome.storage.local.set({ settings: Object.assign({}, DATA.settings, { grant: g }) });
@@ -466,6 +469,7 @@
     if (t.id === 'sheetBack') { closeSheet(); return; }
     if (t.id === 'openCrack' || t.id === 'wCrack') { send({ type: 'openCrack' }); return; }
     const gb = t.closest('[data-goal]'); if (gb) { setGoal(gb.dataset.goal); return; }
+    if (t.id === 'gFind') { GRANT_PROG = '댓글 확인 중…'; render(); const r = await send({ type: 'findGrantDates', force: true }); GRANT_PROG = ''; await load(); render(); toast(r && r.ok ? `작품 ${r.checked}개 중 ${r.found}개의 매입일을 찾았어요` : (r && r.error) || '찾지 못했어요'); return; }
     if (t.id === 'wSnap') { snapshot(); return; }
     if (t.id === 'updOpen') { send({ type: 'openUpdate' }); return; }
     if (t.id === 'updCheck') { t.disabled = true; t.textContent = '확인 중…'; UPD = await send({ type: 'updateStatus', force: true }); render(); toast(UPD && UPD.available ? `새 버전 ${UPD.latest}이 있어요` : UPD && UPD.error ? '확인하지 못했어요' : '최신 버전이에요'); return; }
@@ -499,7 +503,7 @@
 
   if (hasChrome) {
     chrome.storage.onChanged.addListener(async (ch, area) => { if (area !== 'local') return; await load(); if (ch.settings && !ch.snaps && !ch.ledger) { if (UI.page === 'records') drawSide(); else render(); return; } render(); refreshStatus(); });
-    if (chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(m => { if (m.type === 'progress') { STATUS.run = m.run; drawSide(); } if (m.type === 'done') refreshStatus(); });
+    if (chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(m => { if (m.type === 'progress') { STATUS.run = m.run; drawSide(); } if (m.type === 'done') refreshStatus(); if (m.type === 'grantProgress' && UI.page === 'revenue') { GRANT_PROG = m.text; const el = document.querySelector('#gFind'); if (el) { el.disabled = !!m.text; el.closest('.group-row').querySelector('.sub').textContent = m.text || '다 찾았어요'; } } });
   }
 
   (async function start() {

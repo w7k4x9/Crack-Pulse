@@ -9,8 +9,8 @@
   let D = { snaps: [], settings: {} }, ST = { run: {}, meta: {} }, MSG = '', UP = null;
 
   async function load() {
-    const o = await chrome.storage.local.get(['snaps', 'settings']);
-    D.snaps = (o.snaps || []).sort((a, b) => a.t - b.t); D.settings = o.settings || {};
+    const o = await chrome.storage.local.get(['snaps', 'settings', 'grantDates']);
+    D.snaps = (o.snaps || []).sort((a, b) => a.t - b.t); D.settings = o.settings || {}; D.grantDates = o.grantDates || {};
     window.hhApplyTheme(D.settings.theme);
     try { ST = await send({ type: 'status' }) || ST; } catch (e) {}
     try { UP = await send({ type: 'updateStatus' }); } catch (e) {}
@@ -27,8 +27,8 @@
       money = `<div class="group money"><div class="lbl"><span class="sw" style="background:var(--s-money)"></span>${new Date(last.t).getMonth() + 1}월 정산 예상 현금</div>
         <div class="big num">${acct && acct.expectedMoney != null ? fmt(acct.expectedMoney) : '–'}<small>원</small></div>
         ${fc ? `<div class="fc"><span>월말 예상 <b class="num">≈ ${fmt(fc.value)}원</b></span><span class="num">${sfmt(fc.perDay)}원/일</span></div>` : ''}
-        ${(() => { const G = H.grants(S, D.settings.grant); if (!fc || !G.thisMonth || G.included) return ''; return `<div class="fc"><span>+ 오리지널 지원금 ${fmt(G.thisMonth)}원</span><span class="num">합쳐서 <b>≈ ${fmt(fc.value + G.thisMonth)}원</b></span></div>`; })()}
-        ${(() => { const G = H.grants(S, D.settings.grant), add = fc && G.thisMonth && !G.included ? G.thisMonth : 0; const g = (D.settings.goals || {})[H.monthKey(last.t) + ':money'], p = H.goalPlan(add ? Object.assign({}, fc, { now: fc.now + add, value: fc.value + add }) : fc, g); if (!p) return ''; return `<div class="gl"><div class="gb"><div style="width:${Math.min(100, p.pct * 100).toFixed(1)}%"></div></div><div class="fc"><span>목표 ${Math.floor(p.pct * 100)}%</span><span class="${p.likely ? 'up' : 'down'}">${p.reached ? '✓ 달성' : p.likely ? '✓ 지금 속도면 달성' : `하루 ${sfmt(p.perDay)}원 필요`}</span></div></div>`; })()}</div>
+        ${(() => { const G = H.grants(S, Object.assign({}, D.settings.grant, { dates: D.grantDates })); if (!fc || !G.thisMonth || G.included) return ''; return `<div class="fc"><span>+ 오리지널 지원금 ${fmt(G.thisMonth)}원</span><span class="num">합쳐서 <b>≈ ${fmt(fc.value + G.thisMonth)}원</b></span></div>`; })()}
+        ${(() => { const G = H.grants(S, Object.assign({}, D.settings.grant, { dates: D.grantDates })), add = fc && G.thisMonth && !G.included ? G.thisMonth : 0; const g = (D.settings.goals || {})[H.monthKey(last.t) + ':money'], p = H.goalPlan(add ? Object.assign({}, fc, { now: fc.now + add, value: fc.value + add }) : fc, g); if (!p) return ''; return `<div class="gl"><div class="gb"><div style="width:${Math.min(100, p.pct * 100).toFixed(1)}%"></div></div><div class="fc"><span>목표 ${Math.floor(p.pct * 100)}%</span><span class="${p.likely ? 'up' : 'down'}">${p.reached ? '✓ 달성' : p.likely ? '✓ 지금 속도면 달성' : `하루 ${sfmt(p.perDay)}원 필요`}</span></div></div>`; })()}</div>
         <div class="group mini"><div><div class="l">최근 24시간 대화</div><div class="v num">${curOk ? sfmt(cur.v) : '–'}${curOk && prvOk && prv.v > 0 ? ` <span class="small ${cur.v >= prv.v ? 'up' : 'down'}">${cur.v >= prv.v ? '▲' : '▼'} ${Math.abs(Math.round((cur.v / prv.v - 1) * 100))}%</span>` : ''}</div></div><div><div class="l">그 전 24시간</div><div class="v num">${prvOk ? sfmt(prv.v) : '–'}</div></div></div>`;
     } else money = `<div class="group money"><div class="lbl">아직 기록이 없어요</div><div class="sub small" style="margin-top:4px">크랙에 로그인한 상태에서 스냅샷을 받아 보세요.</div></div>`;
     const btn = run.busy ? '받는 중…' : L && L.hard ? `쉬는 중 (${Math.ceil(L.ms / 60000)}분)` : '스냅샷 받기';
