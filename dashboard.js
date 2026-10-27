@@ -376,7 +376,7 @@
       <div class="group"><div class="group-row"><div class="grow">모양</div>${seg('theme', [['system', '시스템'], ['light', '라이트'], ['dark', '다크']], s.theme)}</div>
       <div class="group-row"><div class="grow">세이프 버전 합쳐 보기<div class="sub small">"작품명"과 "작품명 ˢᵃᶠᵉᵗʸ"를 한 작품으로 묶어서 봐요.</div></div><input type="checkbox" class="switch" id="grp" ${UI.group ? 'checked' : ''}></div></div>
       <div class="sec-h"><h2>업데이트</h2></div>
-      <div class="group"><div class="group-row"><div class="grow">지금 버전 ${esc(chrome.runtime.getManifest().version)}<div class="sub small">${!UPD ? '확인 중…' : !UPD.eligible ? '웹 스토어 설치본은 크롬이 알아서 업데이트해요.' : UPD.available ? `새 버전 ${esc(UPD.latest)}이 나왔어요.` : UPD.error ? `확인하지 못했어요 (${esc(UPD.error)})` : '최신 버전이에요. 깃허브를 몇 시간마다 확인해요.'}</div></div>${UPD && UPD.eligible ? `<button class="btn" id="updCheck">다시 확인</button>` : ''}${UPD && UPD.available ? `<button class="btn primary" id="updOpen">업데이트</button>` : ''}</div></div>
+      <div class="group"><div class="group-row"><div class="grow">지금 버전 ${esc(chrome.runtime.getManifest().version)}<div class="sub small">${!UPD ? '확인 중…' : !UPD.eligible ? '웹 스토어 설치본은 크롬이 알아서 업데이트해요.' : UPD.available ? `${esc(UPD.latest)} 버전이 나왔어요.` : UPD.error ? `확인하지 못했어요 (${esc(UPD.error)}). 다시 확인을 눌러 주세요.` : !UPD.checkedAt ? '아직 확인 전이에요. 다시 확인을 눌러 주세요.' : `최신 버전이에요 · ${ago(UPD.checkedAt)} 확인. 깃허브를 몇 시간마다 확인해요.`}</div></div>${UPD && UPD.eligible ? `<button class="btn" id="updCheck">다시 확인</button>` : ''}${UPD && UPD.available ? `<button class="btn primary" id="updOpen">업데이트</button>` : ''}</div></div>
       <p class="note" style="margin-top:22px">펄스 ${esc(chrome.runtime.getManifest().version)} · 넉넉한 취향이 클로드와 함께 만들었어요.</p>`;
   }
 
@@ -519,7 +519,7 @@
     if (t.id === 'gFind') { GRANT_PROG = '댓글 확인 중…'; render(); const r = await send({ type: 'findGrantDates', force: true }); GRANT_PROG = ''; await load(); render(); toast(r && r.ok ? `작품 ${r.checked}개 중 ${r.found}개의 매입일을 찾았어요` : (r && r.error) || '찾지 못했어요'); return; }
     if (t.id === 'wSnap') { snapshot(); return; }
     if (t.id === 'updOpen') { send({ type: 'openUpdate' }); return; }
-    if (t.id === 'updCheck') { t.disabled = true; t.textContent = '확인 중…'; UPD = await send({ type: 'updateStatus', force: true }); render(); toast(UPD && UPD.available ? `새 버전 ${UPD.latest}이 있어요` : UPD && UPD.error ? '확인하지 못했어요' : '최신 버전이에요'); return; }
+    if (t.id === 'updCheck') { t.disabled = true; t.textContent = '확인 중…'; UPD = await send({ type: 'updateStatus', force: true }); render(); toast(UPD && UPD.available ? `${UPD.latest} 버전이 나왔어요. 왼쪽 아래 업데이트를 눌러 주세요` : UPD && UPD.error ? `확인하지 못했어요 (${UPD.error})` : '최신 버전이에요'); return; }
     if (t.id === 'expAll') { exportAll(); return; }
     if (t.id === 'rebuild') { if (await dialog('장부를 다시 계산할까요?', '지금 남아 있는 기록만으로 구간 장부를 새로 만들어요. 지운 기록 구간에서 쌓였던 수익은 사라져요.', '다시 계산')) await chrome.storage.local.set({ ledger: H.rebuildLedger(DATA.snaps, null) }); return; }
     if (t.id === 'delSel') {
