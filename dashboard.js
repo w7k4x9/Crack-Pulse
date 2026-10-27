@@ -55,7 +55,7 @@
     const totals = {};
     ['msg', 'like', 'comment', 'chat'].forEach(k => { totals[k] = H.workPoints(S, allIds, k); });
     const acct = { money: H.accountPoints(S, 'expectedMoney'), cash: H.accountPoints(S, 'expectedCash') };
-    return { S, R, fams, totals, acct, lf, fcMoney: H.forecast(S, 'expectedMoney'), fcCash: H.forecast(S, 'expectedCash') };
+    return { S, R, fams, totals, acct, lf, fcMoney: H.forecast(S, 'expectedMoney'), fcCash: H.forecast(S, 'expectedCash'), grant: H.grants(S, DATA.settings.grant) };
   }
   function seriesFor(key, R) {
     const M = MODEL;
@@ -121,13 +121,14 @@
     const last = pts[pts.length - 1], unit = money ? '원' : '캐시';
     const other = money ? M.acct.cash : M.acct.money, ofc = money ? M.fcCash : M.fcMoney;
     const mName = new Date(M.S[M.S.length - 1].t).getMonth() + 1;
-    const goal = goalOf(kind), plan = H.goalPlan(fc, goal);
+    const G = M.grant, gAdd = money && G && G.thisMonth > 0 && !G.included ? G.thisMonth : 0;
+    const goal = goalOf(kind), plan = H.goalPlan(fc && gAdd ? Object.assign({}, fc, { now: fc.now + gAdd, value: fc.value + gAdd }) : fc, goal);
     let goalHtml = '';
     if (plan) {
       const st = plan.reached ? `<span class="up">✓ 목표를 넘었어요</span>`
         : plan.likely ? `<span class="up">✓ 지금 속도면 달성해요</span> <span class="sub">(하루 ${sfmt(plan.perDay)}${unit}만 늘면 돼요)</span>`
         : `<span class="down">! 지금 속도면 ${fmt(plan.gap)}${unit} 모자라요</span> <span class="sub">— 하루 ${sfmt(plan.perDay)}${unit}씩 늘어야 해요</span>`;
-      goalHtml = `<div class="goal"><div class="goal-top"><span>목표 <b class="num">${fmt(goal)}${unit}</b> 중 <b class="num">${Math.floor(plan.pct * 100)}%</b></span><button class="link small" data-goal="${kind}">바꾸기</button></div>
+      goalHtml = `<div class="goal"><div class="goal-top"><span>목표${gAdd ? '<span class="small">(지원금 포함)</span>' : ''} <b class="num">${fmt(goal)}${unit}</b> 중 <b class="num">${Math.floor(plan.pct * 100)}%</b></span><button class="link small" data-goal="${kind}">바꾸기</button></div>
         <div class="gbar" role="img" aria-label="목표의 ${Math.floor(plan.pct * 100)}%"><div style="width:${Math.min(100, plan.pct * 100).toFixed(1)}%"></div>${fc ? `<i style="left:${Math.min(100, fc.value / goal * 100).toFixed(1)}%" title="월말 예상"></i>` : ''}</div>
         <div class="small goal-st">${st}</div></div>`;
     } else if (fc) goalHtml = `<button class="btn goal-set" data-goal="${kind}">이번 달 목표 정하기</button>`;
@@ -141,6 +142,7 @@
           ${fc.range ? `<dt title="최근 ${fc.range.n}일 중 가장 적게 늘었던 날과 가장 많이 늘었던 날의 속도로 남은 기간을 채웠을 때">예상 범위</dt><dd class="num sub">${man(fc.range.lo)} ~ ${man(fc.range.hi)}</dd>` : ''}
           <dt>하루 평균</dt><dd class="num">${sfmt(fc.perDay)}${unit}</dd>
           <dt>남은 기간</dt><dd class="num">${left(fc.left)}</dd>
+          ${money && G && G.thisMonth > 0 ? (G.included ? `<div class="fc-sep"></div><dt>그중 오리지널 지원금</dt><dd class="num">${fmt(G.thisMonth)}원</dd>` : `<div class="fc-sep"></div><dt>+ 오리지널 지원금</dt><dd class="num">+${fmt(G.thisMonth)}원</dd><dt><b style="color:var(--label)">합쳐서 월말</b></dt><dd class="num"><b>≈ ${fmt(fc.value + G.thisMonth)}원</b></dd>`) : ''}
         </dl><div class="sub small" style="margin-top:6px">하루 평균은 최근 ${fc.basisDays < 6.5 ? (Math.round(fc.basisDays * 10) / 10) + '일' : '7일'} 기준이에요</div>` : '<div class="sub small" style="margin-top:8px">정산 정보가 담긴 기록이 두 개 이상 쌓이면 월말 예상이 나와요.</div>'}
         ${kind === 'money' && other.length ? `<div class="cash"><span class="sub"><span class="sw" style="background:var(--s-cash);margin-right:6px"></span>정산 예상 캐시</span><span class="num"><b>${fmt(other[other.length - 1].raw)}</b>${ofc ? ` <span class="sub">${sfmt(ofc.perDay)}/일</span>` : ''}</span></div>` : ''}
       </div>
@@ -239,7 +241,7 @@
     const ifTile = eff.money.per != null ? `<div class="tile"><div class="lbl">오리지널 대화가 하루 1만 개 더 늘면</div><div class="v num">≈ +${fmt(eff.money.per * 10)}<span class="sub" style="font-size:13px;font-weight:500">원/일</span></div><div class="s">한 달이면 ≈ ${C.kfmt(eff.money.per * 10 * 30)}원</div></div>` : '';
     const months = H.months(M.S).reverse();
     const E = ((DATA.ledger && DATA.ledger.entries) || []).slice().reverse();
-    return heroPanel('money') +
+    return heroPanel('money') + grantSection() +
       `<div class="sec-h"><h2>하루 정산 예상 현금</h2><span class="sub">가로 점선은 기간 평균</span></div>
       <div class="group chart-panel"><div class="chart" data-chart="rev-daily"></div></div>
       <div class="sec-h"><h2>수익 효율</h2><span class="sub">${H.PERIODS[UI.period].label} 동안 대화 1천 개가 정산 예상을 얼마나 올렸는지</span></div>
@@ -249,10 +251,29 @@
       <div class="group table-wrap"><table class="tbl plan"><thead><tr><th class="l">작품</th><th>하루 평균</th><th class="l">비중</th><th>이번 달 기록된 만큼${since ? `<span class="sub small"> (${since}~)</span>` : ''}</th><th>월말까지 더</th></tr></thead><tbody>${planRows(true, '원', 'money') + planRows(false, '캐시', 'cash') || '<tr><td class="l sub" colspan="5">아직 계산할 기록이 없어요</td></tr>'}</tbody></table></div>
       <div class="sec-h" style="margin-top:30px"></div>${heroPanel('cash')}
       <div class="sec-h"><h2>달마다</h2><span class="sub">그 달 마지막 기록 기준</span></div>
-      <div class="group table-wrap"><table class="tbl"><thead><tr><th class="l">달</th><th>정산 예상 현금</th><th>정산 예상 캐시</th><th title="크랙이 보내 주는 값을 그대로 보여 줘요">월 슈퍼챗</th><th class="l">기준 기록</th></tr></thead><tbody>${months.map(m => `<tr style="cursor:default"><td class="l">${m.month.replace('-', '년 ')}월</td><td class="num">${fmt(m.money)}원</td><td class="num">${fmt(m.cash)}</td><td class="num">${fmt(m.superChat)}</td><td class="l sub">${esc(m.id)}</td></tr>`).join('')}</tbody></table></div>
+      <div class="group table-wrap"><table class="tbl"><thead><tr><th class="l">달</th><th>정산 예상 현금</th><th>정산 예상 캐시</th><th>오리지널 지원금</th><th title="크랙이 보내 주는 값을 그대로 보여 줘요">월 슈퍼챗</th><th class="l">기준 기록</th></tr></thead><tbody>${months.map(m => { const gm = M.grant ? M.grant.list.filter(g => !g.off && g.month === m.month).length * M.grant.amount : 0; return `<tr style="cursor:default"><td class="l">${m.month.replace('-', '년 ')}월</td><td class="num">${fmt(m.money)}원</td><td class="num">${fmt(m.cash)}</td><td class="num">${gm ? (M.grant.included ? '' : '+') + fmt(gm) + '원' : '<span class="faint">–</span>'}</td><td class="num">${fmt(m.superChat)}</td><td class="l sub">${esc(m.id)}</td></tr>`; }).join('')}</tbody></table></div>
       <details class="disclosure"><summary>구간 장부 <span class="sub small">기록과 기록 사이에 늘어난 정산 예상 · ${E.length}구간</span></summary>
       <div class="group table-wrap"><table class="tbl"><thead><tr><th class="l">구간</th><th>현금</th><th>캐시</th><th class="l">메모</th></tr></thead><tbody>${E.map(e => `<tr style="cursor:default"><td class="l num">${esc(e.from)} → ${esc(e.to.slice(5))}</td><td class="num">${e.poolM == null ? '–' : sfmt(e.poolM) + '원'}</td><td class="num">${e.poolC == null ? '–' : sfmt(e.poolC)}</td><td class="l sub small">${e.cross ? '달이 바뀐 구간 · 지난달 말 증가분은 빠졌을 수 있어요' : e.poolM == null && e.poolC == null ? '정산 정보 없음' : ''}</td></tr>`).join('') || '<tr><td class="l sub" colspan="4">아직 구간이 없어요</td></tr>'}</tbody></table></div></details>
       <p class="note">작품별 수익은 추정치예요. 두 기록 사이 계정 정산 증가분을 그 사이 작품별 대화 증가 비율로 나눠요. 현금은 오리지널 작품끼리, 캐시는 나머지 작품끼리 나눠요. 추가 기능 사용량이나 온리 가산은 반영되지 않아요. 그래서 같은 종류 작품끼리는 대화 1천 개당 수익이 같게 계산돼요.</p>`;
+  }
+  function grantSection() {
+    const G = MODEL.grant; if (!G || !G.list.length) return '';
+    const cur = G.cur, mm = k => `${+k.slice(5)}월`, my = k => `${k.slice(2, 4)}년 ${+k.slice(5)}월`;
+    const opts = g => { const out = [], start = (g.created || g.month).slice(0, 7) < g.month ? (g.created || g.month).slice(0, 7) : g.month; let [y, m] = start.split('-').map(Number); const end = H.monthKey(H.addDays(H.monthEnd(H.parseId(cur + '-01')), 40)); for (let i = 0; i < 24; i++) { const k = `${y}-${H.pad(m)}`; out.push(k); if (k >= end) break; m++; if (m > 12) { m = 1; y++; } } if (!out.includes(g.month)) out.push(g.month); return out; };
+    const st = g => g.off ? '<span class="faint">빼 둠</span>' : g.month === cur ? '<span class="tag or">이번 달</span>' : g.month > cur ? '<span class="tag lk">예정</span>' : '<span class="sub small">받음</span>';
+    return `<div class="sec-h"><h2>오리지널 지원금</h2><span class="sub">작품당 한 번 · 언세이프와 세이프 버전은 한 작품으로 셈</span></div>
+      <div class="group grants">
+        <div class="group-row gsum"><div class="grow"><span class="sub">이번 달</span> <b class="num">${G.thisMonth ? '+' + fmt(G.thisMonth) + '원' : '없음'}</b><span class="sep"></span><span class="sub">지금까지</span> <b class="num">${fmt(G.total)}원</b> <span class="sub small">(${G.list.filter(g => !g.off && g.month <= cur).length}작품)</span>${G.upcoming ? `<span class="sep"></span><span class="sub">예정</span> <b class="num">${fmt(G.upcoming)}원</b>` : ''}</div></div>
+        ${G.list.map(g => `<div class="group-row${g.off ? ' off' : ''}"><div class="grow"><b>${esc(g.name)}</b><div class="sub small">${g.flip ? `기록 중 ${C.dlabel(g.flip)}에 오리지널이 됐어요` : g.set ? '직접 정한 달' : `생성 ${esc(g.created || '–')} · 받은 달은 생성 달로 짐작했어요`}</div></div>${st(g)}
+          <select class="pop-btn" data-gmonth="${esc(g.key)}" aria-label="${esc(g.name)} 지원금 받은 달">${opts(g).map(k => `<option value="${k}"${k === g.month ? ' selected' : ''}>${my(k)}</option>`).join('')}</select>
+          <input type="checkbox" class="switch" data-goff="${esc(g.key)}" ${g.off ? '' : 'checked'} title="계산에 넣기" aria-label="${esc(g.name)} 지원금 계산에 넣기"></div>`).join('')}
+        <div class="group-row"><div class="grow">1작품당 금액</div><label class="numin small-in"><input type="text" inputmode="numeric" id="gAmt" value="${fmt(G.amount)}" aria-label="오리지널 지원금 1작품당 금액"><span>원</span></label></div>
+        <div class="group-row"><div class="grow">정산 예상 현금에 이미 들어가 있어요<div class="sub small">켜면 지원금을 따로 더하지 않고 "그중 지원금"으로만 보여 줘요. 잘 모르겠으면 꺼 두세요.</div></div><input type="checkbox" class="switch" id="gInc" ${G.included ? 'checked' : ''}></div>
+      </div>`;
+  }
+  async function saveGrant(patch) {
+    const g = Object.assign({ months: {}, off: {} }, DATA.settings.grant || {});
+    patch(g); await chrome.storage.local.set({ settings: Object.assign({}, DATA.settings, { grant: g }) });
   }
   function drawRevenue() {
     const M = MODEL, R = M.R;
@@ -458,6 +479,11 @@
     }
   });
   document.addEventListener('change', e => {
+    const t = e.target, d = t.dataset || {};
+    if (d.gmonth) { saveGrant(g => { g.months[d.gmonth] = t.value; }); return; }
+    if (d.goff) { saveGrant(g => { if (t.checked) delete g.off[d.goff]; else g.off[d.goff] = true; }); return; }
+    if (t.id === 'gInc') { saveGrant(g => { g.included = t.checked; }); return; }
+    if (t.id === 'gAmt') { const v = +String(t.value).replace(/[^\d]/g, ''); saveGrant(g => { g.amount = v > 0 ? v : 300000; }); return; }
     const p = e.target.dataset && e.target.dataset.pick;
     if (p) { if (e.target.checked) PICK.add(p); else PICK.delete(p); const b = $('#delSel'); if (b) { b.disabled = !PICK.size; b.textContent = '선택한 기록 지우기' + (PICK.size ? ` (${PICK.size})` : ''); } return; }
     if (e.target.id === 'grp') { UI.group = e.target.checked; saveUI(); render(); }
