@@ -276,14 +276,17 @@
     const cur = G.cur, mm = k => `${+k.slice(5)}월`, my = k => `${k.slice(2, 4)}년 ${+k.slice(5)}월`;
     const opts = g => { const out = [], start = (g.created || g.month).slice(0, 7) < g.month ? (g.created || g.month).slice(0, 7) : g.month; let [y, m] = start.split('-').map(Number); const end = H.monthKey(H.addDays(H.monthEnd(H.parseId(cur + '-01')), 40)); for (let i = 0; i < 24; i++) { const k = `${y}-${H.pad(m)}`; out.push(k); if (k >= end) break; m++; if (m > 12) { m = 1; y++; } } if (!out.includes(g.month)) out.push(g.month); return out; };
     const st = g => g.off ? '<span class="faint">빼 둠</span>' : g.month === cur ? '<span class="tag or">이번 달</span>' : g.month > cur ? '<span class="tag lk">예정</span>' : '<span class="sub small">받음</span>';
-    return `<div class="sec-h"><h2>오리지널 지원금</h2><span class="sub">작품당 한 번 · 언세이프와 세이프 버전은 한 작품으로 셈</span></div>
+    return `<div class="sec-h"><h2>오리지널 지원금</h2><span class="sub">시리즈마다 한 번 · 크랙에서 같은 시리즈로 묶인 작품은 이름이 달라도 한 번으로 셈</span></div>
       <div class="group grants">
-        <div class="group-row gsum"><div class="grow"><span class="sub">이번 달</span> <b class="num">${G.thisMonth ? '+' + fmt(G.thisMonth) + '원' : '없음'}</b><span class="sep"></span><span class="sub">지금까지</span> <b class="num">${fmt(G.total)}원</b> <span class="sub small">(${G.list.filter(g => !g.off && g.month <= cur).length}작품)</span>${G.upcoming ? `<span class="sep"></span><span class="sub">예정</span> <b class="num">${fmt(G.upcoming)}원</b>` : ''}</div></div>
-        ${G.list.map(g => `<div class="group-row${g.off ? ' off' : ''}"><div class="grow"><b>${esc(g.name)}</b><div class="sub small">${g.set ? '직접 정한 달' : g.src === 'comment' ? `내 첫 댓글 ${C.tlong(g.comment.t)}${g.comment.text ? ` · 「${esc(g.comment.text)}」` : ''}` : g.src === 'flip' ? `기록 중 ${C.dlabel(g.flip)}에 오리지널이 됐어요` : `생성 ${esc(g.created || '–')} · ${g.denied ? '댓글을 못 읽어서(성인 인증) 생성 달로 짐작했어요' : g.checked ? '내 댓글이 없어서 생성 달로 짐작했어요' : '댓글 확인 전이라 생성 달로 짐작했어요'}`}</div></div>${st(g)}
+        <div class="group-row gsum"><div class="grow"><span class="sub">이번 달</span> <b class="num">${G.thisMonth ? '+' + fmt(G.thisMonth) + '원' : '없음'}</b><span class="sep"></span><span class="sub">지금까지</span> <b class="num">${fmt(G.total)}원</b> <span class="sub small">(${G.list.filter(g => !g.off && g.month <= cur).length}건)</span>${G.upcoming ? `<span class="sep"></span><span class="sub">예정</span> <b class="num">${fmt(G.upcoming)}원</b>` : ''}</div></div>
+        ${G.list.map(g => { const from = g.from, short = n => esc(n.replace(/^(.{14}).+$/, '$1…'));
+          const when = g.set ? '직접 정한 달' : from.src === 'comment' ? `${g.members.length > 1 ? `「${short(from.name)}」 ` : ''}내 첫 댓글 ${C.tlong(from.comment.t)}` : from.src === 'flip' ? `기록 중 ${C.dlabel(from.flip)}에 오리지널이 됐어요` : `생성 ${esc(from.created || '–')} · ${from.denied ? '댓글을 못 읽어서(성인 인증) 생성 달로 짐작' : from.checked ? '내 댓글이 없어서 생성 달로 짐작' : '확인 전이라 생성 달로 짐작'}`;
+          return `<div class="group-row${g.off ? ' off' : ''}"><div class="grow"><b>${esc(g.name)}</b>${g.members.length > 1 ? ` <span class="tag ad">시리즈 ${g.members.length}작품</span>` : ''}
+            ${g.members.length > 1 ? `<div class="small gmem">${g.members.map(m => esc(m.name)).join(' · ')}</div>` : ''}<div class="sub small">${when}</div></div>${st(g)}
           <select class="pop-btn" data-gmonth="${esc(g.key)}" aria-label="${esc(g.name)} 지원금 받은 달">${opts(g).map(k => `<option value="${k}"${k === g.month ? ' selected' : ''}>${my(k)}</option>`).join('')}</select>
-          <input type="checkbox" class="switch" data-goff="${esc(g.key)}" ${g.off ? '' : 'checked'} title="계산에 넣기" aria-label="${esc(g.name)} 지원금 계산에 넣기"></div>`).join('')}
-        <div class="group-row"><div class="grow">댓글에서 매입일 찾기<div class="sub small">${GRANT_PROG ? esc(GRANT_PROG) : '작품 댓글 중 내가 처음 단 댓글 날짜를 매입일로 써요. 작품마다 한 번만 찾고, 새 오리지널은 스냅샷 뒤에 알아서 찾아요.'}</div></div><button class="btn" id="gFind" ${GRANT_PROG ? 'disabled' : ''}>${G.list.some(g => g.checked) ? '다시 찾기' : '찾기'}</button></div>
-        <div class="group-row"><div class="grow">1작품당 금액</div><label class="numin small-in"><input type="text" inputmode="numeric" id="gAmt" value="${fmt(G.amount)}" aria-label="오리지널 지원금 1작품당 금액"><span>원</span></label></div>
+          <input type="checkbox" class="switch" data-goff="${esc(g.key)}" ${g.off ? '' : 'checked'} title="계산에 넣기" aria-label="${esc(g.name)} 지원금 계산에 넣기"></div>`; }).join('')}
+        <div class="group-row"><div class="grow">매입일·시리즈 찾기<div class="sub small">${GRANT_PROG ? esc(GRANT_PROG) : '작품 댓글 중 내가 처음 단 댓글 날짜를 매입일로, 크랙 작품 정보의 시리즈로 묶음을 정해요. 새 오리지널은 스냅샷 뒤에 알아서 찾아요.'}</div></div><button class="btn" id="gFind" ${GRANT_PROG ? 'disabled' : ''}>${G.list.some(g => g.checked) ? '다시 찾기' : '찾기'}</button></div>
+        <div class="group-row"><div class="grow">한 번에 받는 금액</div><label class="numin small-in"><input type="text" inputmode="numeric" id="gAmt" value="${fmt(G.amount)}" aria-label="오리지널 지원금 한 번에 받는 금액"><span>원</span></label></div>
         <div class="group-row"><div class="grow">정산 예상 현금에 이미 들어가 있어요<div class="sub small">켜면 지원금을 따로 더하지 않고 "그중 지원금"으로만 보여 줘요. 잘 모르겠으면 꺼 두세요.</div></div><input type="checkbox" class="switch" id="gInc" ${G.included ? 'checked' : ''}></div>
       </div>`;
   }
@@ -550,6 +553,8 @@
 
   (async function start() {
     UI.page = location.hash.slice(1) || 'overview';
-    await load(); render(); refreshStatus(); setInterval(refreshStatus, 60000);
+    await load(); render(); await refreshStatus(); setInterval(refreshStatus, 60000);
+    // 시리즈나 매입일을 아직 모르는 오리지널 작품이 있으면 조용히 한 번 찾아 둠
+    try { if (MODEL && MODEL.grant && MODEL.grant.list.some(g => !g.seriesChecked || !g.checked) && STATUS.loggedIn) send({ type: 'findGrantDates' }); } catch (e) {}
   })();
 })();

@@ -145,12 +145,28 @@ async function findGrantDates({ force = false } = {}) {
   const token = await getToken(); if (!token) return { ok: false, login: true, error: '크랙에 로그인되어 있지 않아요.' };
   const { snaps = [], grantDates = {} } = await get(['snaps', 'grantDates']);
   if (!snaps.length) return { ok: true, found: 0 };
-  const fams = H.families(snaps, true).filter(f => f.original && (force || !grantDates[f.key] || !grantDates[f.key].at));
+  // 할 일: 매입일(첫 댓글)을 아직 못 찾았거나, 시리즈 정보가 없거나 일주일 넘게 지난 오리지널 작품
+  const needC = f => force || !grantDates[f.key] || (!grantDates[f.key].at && !grantDates[f.key].denied);
+  const needS = f => force || !grantDates[f.key] || !Array.isArray(grantDates[f.key].series) || Date.now() - (grantDates[f.key].seriesAt || 0) > 7 * 86400000;
+  const fams = H.families(snaps, true).filter(f => f.original && (needC(f) || needS(f)));
   GRANT_BUSY = true; let found = 0;
   try {
     for (let i = 0; i < fams.length; i++) {
-      const f = fams[i]; let best = null, denied = 0;
-      chrome.runtime.sendMessage({ type: 'grantProgress', text: `댓글 확인 중 ${i + 1}/${fams.length}` }).catch(() => {});
+      const f = fams[i], prev = grantDates[f.key] || {};
+      chrome.runtime.sendMessage({ type: 'grantProgress', text: `오리지널 작품 확인 중 ${i + 1}/${fams.length}` }).catch(() => {});
+      // 시리즈: 작품 상세의 series._id (이름이 달라도 같은 시리즈면 지원금은 한 번)
+      if (needS(f)) {
+        const series = [];
+        for (const w of f.members.filter(x => x.sourceId)) {
+          const r = await commentsGet(`${API}/${w.type === 'character' ? 'characters' : 'stories'}/${w.sourceId}`, token);
+          if (r.status === 200) { let d = (r.json && (r.json.data || r.json)) || {}; d = d.story || d.character || d; if (d.series && d.series._id && !series.some(x => x.id === d.series._id)) series.push({ id: d.series._id, name: d.series.name || '' }); }
+          await sleep(250);
+        }
+        grantDates[f.key] = Object.assign({}, prev, { series, seriesAt: Date.now() });
+        await set({ grantDates });
+      }
+      if (!needC(f)) { if (grantDates[f.key].at) found++; continue; }
+      let best = null, denied = 0;
       for (const w of f.members.filter(x => x.sourceId)) {
         let cur = null, pages = 0;
         do {
@@ -162,7 +178,7 @@ async function findGrantDates({ force = false } = {}) {
           await sleep(250);
         } while (cur && pages < 80);
       }
-      grantDates[f.key] = best ? { at: best.at, text: best.text, checkedAt: Date.now() } : { at: null, denied: !!denied, checkedAt: Date.now() };
+      grantDates[f.key] = Object.assign({}, grantDates[f.key] || {}, best ? { at: best.at, text: best.text, denied: false, checkedAt: Date.now() } : { at: null, denied: !!denied, checkedAt: Date.now() });
       if (best) found++;
       await set({ grantDates });
     }
