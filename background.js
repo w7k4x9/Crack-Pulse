@@ -113,6 +113,20 @@ async function fetchSnapshot(token) {
   return { snap: H.normSnap({ snapshot_id: H.idOf(now), captured_at: now.toISOString(), account, works }), accountWhy, failed: tried - filled };
 }
 
+// ---------- 지급(출금) 정보: 세율·다음 지급일·출금 가능 잔액·지급 내역 ----------
+const CASH_API = 'https://crack-api.wrtn.ai/crack-cash';
+async function fetchPayout(token) {
+  token = token || await getToken(); if (!token) return { ok: false, login: true };
+  const g = async path => { const r = await commentsGet(CASH_API + path, token); if (r.status !== 200) throw new Error('응답 ' + r.status); return (r.json && r.json.data) || {}; };
+  const n = v => (typeof v === 'number' && isFinite(v)) ? v : null;
+  const d = await g('/withdrawals/data');
+  const list = []; let cur = null, pages = 0;
+  do { const p = await g('/withdrawals?limit=20' + (cur ? '&cursor=' + encodeURIComponent(cur) : '')); (p.items || []).forEach(x => list.push({ id: x.withdrawalId, status: x.status, amount: n(x.amount), tax: n(x.tax), net: n(x.netAmount), requestedAt: x.requestedAt || null, payoutAt: x.expectedPayoutDate || null, sources: (x.amountBySource || []).map(s => ({ source: s.source, amount: n(s.amount) })) })); cur = p.nextCursor; pages++; await sleep(300); } while (cur && pages < 20);
+  const payout = { at: Date.now(), taxRate: n(d.taxRate), nextPayoutDate: d.nextPayoutDate || null, minAmount: n(d.minAmount), balance: n(d.balance), withdrawable: n(d.withdrawableBalance), crackCash: n(d.crackCash), eventCash: n(d.eventCash), list };
+  await set({ payout });
+  return { ok: true, count: list.length };
+}
+
 // ---------- 오리지널 매입일: 작품 댓글에서 내가 처음 단 댓글 시각 ----------
 // 작품마다 한 번만 찾고 기억함 (grantDates). 성인 인증 403은 막힘으로 보지 않음, 429만 막힘
 let GRANT_BUSY = false;
@@ -184,6 +198,7 @@ async function takeSnapshot({ force = false, auto = false } = {}) {
     await setMeta({ lastTaken: res.snap.t, lastError: null, lastResult: { at: res.snap.t, count: res.snap.works.length, account: !!res.snap.account, accountWhy: res.accountWhy, failed: res.failed, auto } });
     badge('');
     setTimeout(() => findGrantDates().catch(() => {}), 3000); // 새 오리지널이 있으면 매입일을 찾아 둠
+    try { await fetchPayout(token); } catch (e) {} // 지급 정보는 실패해도 스냅샷은 그대로
     return { ok: true, id: res.snap.id, count: res.snap.works.length, account: !!res.snap.account, accountWhy: res.accountWhy };
   } catch (e) {
     const msg = String(e.message || e);
@@ -235,6 +250,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     }
     if (msg.type === 'openCrack') { await chrome.tabs.create({ url: SITE }); return { ok: true }; }
     if (msg.type === 'openDashboard') { await chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html' + (msg.hash || '')) }); return { ok: true }; }
+    if (msg.type === 'refreshPayout') { try { return await fetchPayout(); } catch (e) { return { ok: false, error: String(e.message || e) }; } }
     if (msg.type === 'findGrantDates') return findGrantDates({ force: !!msg.force });
     if (msg.type === 'updateStatus') return msg.force ? self.PulseUpdate.check({ force: true }) : self.PulseUpdate.status();
     if (msg.type === 'openUpdate') { await chrome.tabs.create({ url: chrome.runtime.getURL('update.html') }); return { ok: true }; }

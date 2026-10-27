@@ -192,3 +192,4 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .numin.small-in input { font-size: 13px; }
 .numin.small-in input { width: 100%; min-width: 0; }
 .hero-num .fc .fc-sep { grid-column: 1 / -1; height: .5px; background: var(--sep); margin: 3px 0 2px; }
+.tbl tr.sum td { background: var(--panel-2) !important; border-top: .5px solid var(--sep-strong); }

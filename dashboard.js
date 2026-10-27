@@ -21,12 +21,13 @@
   const send = msg => hasChrome && chrome.runtime && chrome.runtime.sendMessage ? chrome.runtime.sendMessage(msg) : Promise.resolve(null);
 
   async function load() {
-    const o = await chrome.storage.local.get(['snaps', 'ledger', 'settings', 'meta', 'grantDates']);
+    const o = await chrome.storage.local.get(['snaps', 'ledger', 'settings', 'meta', 'grantDates', 'payout']);
     DATA.snaps = (o.snaps || []).slice().sort((a, b) => a.t - b.t);
     DATA.ledger = o.ledger || null;
     DATA.settings = Object.assign({ auto: 0, theme: 'system' }, o.settings || {});
     DATA.meta = o.meta || {};
     DATA.grantDates = o.grantDates || {};
+    DATA.payout = o.payout || null;
     window.hhApplyTheme(DATA.settings.theme);
   }
   let UPD = null;
@@ -144,6 +145,7 @@
           <dt>하루 평균</dt><dd class="num">${sfmt(fc.perDay)}${unit}</dd>
           <dt>남은 기간</dt><dd class="num">${left(fc.left)}</dd>
           ${money && G && G.thisMonth > 0 ? (G.included ? `<div class="fc-sep"></div><dt>그중 오리지널 지원금</dt><dd class="num">${fmt(G.thisMonth)}원</dd>` : `<div class="fc-sep"></div><dt>+ 오리지널 지원금</dt><dd class="num">+${fmt(G.thisMonth)}원</dd><dt><b style="color:var(--label)">합쳐서 월말</b></dt><dd class="num"><b>≈ ${fmt(fc.value + G.thisMonth)}원</b></dd>`) : ''}
+          ${money && DATA.payout && DATA.payout.taxRate != null ? `<div class="fc-sep"></div><dt title="크랙 출금 화면의 세율(${(DATA.payout.taxRate * 100).toFixed(1)}%)로 뺀 값">세금 ${(DATA.payout.taxRate * 100).toFixed(1)}% 빼면</dt><dd class="num">≈ ${fmt((fc.value + gAdd) * (1 - DATA.payout.taxRate))}원</dd>` : ''}
         </dl><div class="sub small" style="margin-top:6px">하루 평균은 최근 ${fc.basisDays < 6.5 ? (Math.round(fc.basisDays * 10) / 10) + '일' : '7일'} 기준이에요</div>` : '<div class="sub small" style="margin-top:8px">정산 정보가 담긴 기록이 두 개 이상 쌓이면 월말 예상이 나와요.</div>'}
         ${kind === 'money' && other.length ? `<div class="cash"><span class="sub"><span class="sw" style="background:var(--s-cash);margin-right:6px"></span>정산 예상 캐시</span><span class="num"><b>${fmt(other[other.length - 1].raw)}</b>${ofc ? ` <span class="sub">${sfmt(ofc.perDay)}/일</span>` : ''}</span></div>` : ''}
       </div>
@@ -242,7 +244,7 @@
     const ifTile = eff.money.per != null ? `<div class="tile"><div class="lbl">오리지널 대화가 하루 1만 개 더 늘면</div><div class="v num">≈ +${fmt(eff.money.per * 10)}<span class="sub" style="font-size:13px;font-weight:500">원/일</span></div><div class="s">한 달이면 ≈ ${C.kfmt(eff.money.per * 10 * 30)}원</div></div>` : '';
     const months = H.months(M.S).reverse();
     const E = ((DATA.ledger && DATA.ledger.entries) || []).slice().reverse();
-    return heroPanel('money') + grantSection() +
+    return heroPanel('money') + grantSection() + payoutSection() +
       `<div class="sec-h"><h2>하루 정산 예상 현금</h2><span class="sub">가로 점선은 기간 평균</span></div>
       <div class="group chart-panel"><div class="chart" data-chart="rev-daily"></div></div>
       <div class="sec-h"><h2>수익 효율</h2><span class="sub">${H.PERIODS[UI.period].label} 동안 대화 1천 개가 정산 예상을 얼마나 올렸는지</span></div>
@@ -272,6 +274,30 @@
         <div class="group-row"><div class="grow">1작품당 금액</div><label class="numin small-in"><input type="text" inputmode="numeric" id="gAmt" value="${fmt(G.amount)}" aria-label="오리지널 지원금 1작품당 금액"><span>원</span></label></div>
         <div class="group-row"><div class="grow">정산 예상 현금에 이미 들어가 있어요<div class="sub small">켜면 지원금을 따로 더하지 않고 "그중 지원금"으로만 보여 줘요. 잘 모르겠으면 꺼 두세요.</div></div><input type="checkbox" class="switch" id="gInc" ${G.included ? 'checked' : ''}></div>
       </div>`;
+  }
+  const SRC = { SETTLEMENT: '크리에이터 정산', NON_CREATOR_SETTLEMENT: '일반 정산', PAYBACK_EVENT: '이벤트 페이백' };
+  const PST = { COMPLETED: '지급 완료', REQUESTED: '신청됨', PENDING: '처리 중', PROCESSING: '처리 중', FAILED: '실패', CANCELED: '취소', CANCELLED: '취소' };
+  let PAYOUT_BUSY = false;
+  function payoutSection() {
+    const P = DATA.payout, M = MODEL;
+    const head = `<div class="sec-h"><h2>받을 돈</h2><span class="sub">${P ? `크랙 출금 정보 · ${ago(P.at)} 확인` : '크랙 출금 화면의 정보'} <button class="link small" id="pRefresh" ${PAYOUT_BUSY ? 'disabled' : ''}>${PAYOUT_BUSY ? '가져오는 중…' : P ? '새로고침' : '가져오기'}</button></span></div>`;
+    if (!P) return head + `<div class="group"><div class="group-row sub">스냅샷을 받을 때 다음 지급일, 출금 가능 잔액, 세율, 지급 내역을 같이 가져와요. 지금 가져오려면 오른쪽 위 「가져오기」를 눌러 주세요.</div></div>`;
+    const tax = P.taxRate, fc = M.fcMoney, G = M.grant, add = G && G.thisMonth && !G.included ? G.thisMonth : 0;
+    const nd = P.nextPayoutDate ? Date.parse(P.nextPayoutDate) : null, dleft = nd ? Math.ceil((H.dayStart(nd) - H.dayStart(Date.now())) / H.DAY) : null;
+    const canW = P.withdrawable != null && P.minAmount != null && P.withdrawable >= P.minAmount;
+    const tiles = `<div class="group tiles tiles-3">
+      <div class="tile"><div class="lbl">다음 지급일</div><div class="v">${nd ? C.dlong(nd) : '–'}</div><div class="s">${dleft != null ? (dleft > 0 ? `${dleft}일 남음` : dleft === 0 ? '오늘' : '지났어요') : ''} · 출금 신청한 돈이 들어오는 날</div></div>
+      <div class="tile"><div class="lbl">출금 가능 잔액</div><div class="v num">${fmt(P.withdrawable)}<span class="sub" style="font-size:13px;font-weight:500">원</span></div><div class="s">${canW ? `<a class="link" href="https://crack.wrtn.ai/crack-cash/withdrawal" target="_blank" rel="noopener">크랙에서 출금 신청하기</a>` : `${fmt(P.minAmount)}원부터 출금할 수 있어요 · 매월 1일 정산 뒤 채워져요`}</div></div>
+      <div class="tile"><div class="lbl">이번 달 실수령 예상</div><div class="v num">${fc && tax != null ? '≈ ' + fmt((fc.value + add) * (1 - tax)) : '–'}<span class="sub" style="font-size:13px;font-weight:500">원</span></div><div class="s">${fc && tax != null ? `월말 예상${add ? '+지원금' : ''} ${C.kfmt(fc.value + add)}원에서 세금 ${(tax * 100).toFixed(1)}% 뺀 값` : '월말 예상이 나오면 계산돼요'}</div></div>
+    </div>`;
+    const L = (P.list || []).slice().sort((a, b) => String(b.payoutAt || b.requestedAt).localeCompare(String(a.payoutAt || a.requestedAt)));
+    const byYear = {}; L.filter(x => x.status === 'COMPLETED').forEach(x => { const y = new Date(Date.parse(x.payoutAt || x.requestedAt)).getFullYear(); const o = byYear[y] = byYear[y] || { amount: 0, tax: 0, net: 0, n: 0 }; o.amount += x.amount || 0; o.tax += x.tax || 0; o.net += x.net || 0; o.n++; });
+    const dshort = iso => { if (!iso) return '–'; const d = new Date(Date.parse(iso)); return `${String(d.getFullYear()).slice(2)}.${H.pad(d.getMonth() + 1)}.${H.pad(d.getDate())}`; };
+    const table = L.length ? `<div class="group table-wrap" style="margin-top:10px"><table class="tbl"><thead><tr><th class="l">지급일</th><th class="l">신청일</th><th>신청 금액</th><th>세금</th><th>실수령</th><th class="l">들어온 곳</th><th class="l">상태</th></tr></thead><tbody>
+      ${L.map(x => `<tr style="cursor:default"><td class="l num">${dshort(x.payoutAt)}</td><td class="l num sub">${dshort(x.requestedAt)}</td><td class="num">${fmt(x.amount)}원</td><td class="num sub">−${fmt(x.tax)}원</td><td class="num"><b>${fmt(x.net)}원</b></td><td class="l small">${(x.sources || []).filter(s => s.amount).map(s => `${SRC[s.source] || esc(s.source)} ${fmt(s.amount)}`).join(' · ') || '<span class="faint">–</span>'}</td><td class="l small ${x.status === 'COMPLETED' ? 'sub' : x.status === 'FAILED' ? 'down' : ''}">${PST[x.status] || esc(x.status || '')}</td></tr>`).join('')}
+      ${Object.keys(byYear).sort().reverse().map(y => `<tr class="sum"><td class="l" colspan="2"><b>${y}년 합계</b> <span class="sub small">${byYear[y].n}번</span></td><td class="num"><b>${fmt(byYear[y].amount)}원</b></td><td class="num"><b>−${fmt(byYear[y].tax)}원</b></td><td class="num"><b>${fmt(byYear[y].net)}원</b></td><td class="l sub small" colspan="2">세금 신고 때 원천징수액 확인용</td></tr>`).join('')}
+      </tbody></table></div>` : `<div class="group" style="margin-top:10px"><div class="group-row sub">아직 지급 내역이 없어요.</div></div>`;
+    return head + tiles + table;
   }
   let GRANT_PROG = '';
   async function saveGrant(patch) {
@@ -469,6 +495,7 @@
     if (t.id === 'sheetBack') { closeSheet(); return; }
     if (t.id === 'openCrack' || t.id === 'wCrack') { send({ type: 'openCrack' }); return; }
     const gb = t.closest('[data-goal]'); if (gb) { setGoal(gb.dataset.goal); return; }
+    if (t.id === 'pRefresh') { PAYOUT_BUSY = true; render(); const r = await send({ type: 'refreshPayout' }); PAYOUT_BUSY = false; await load(); render(); toast(r && r.ok ? `지급 정보를 가져왔어요 · 내역 ${r.count}건` : r && r.login ? '크랙에 로그인되어 있지 않아요' : `가져오지 못했어요${r && r.error ? ' (' + r.error + ')' : ''}`); return; }
     if (t.id === 'gFind') { GRANT_PROG = '댓글 확인 중…'; render(); const r = await send({ type: 'findGrantDates', force: true }); GRANT_PROG = ''; await load(); render(); toast(r && r.ok ? `작품 ${r.checked}개 중 ${r.found}개의 매입일을 찾았어요` : (r && r.error) || '찾지 못했어요'); return; }
     if (t.id === 'wSnap') { snapshot(); return; }
     if (t.id === 'updOpen') { send({ type: 'openUpdate' }); return; }
