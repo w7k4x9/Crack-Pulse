@@ -26,9 +26,10 @@
   --toolbar: rgba(245,245,247,.78);
   --shadow-sheet: 0 22px 70px rgba(0,0,0,.28), 0 0 0 .5px rgba(0,0,0,.18);
   --up: #1a7f37; --down: #d70015;
-  /* 차트 색: 앱 강조색(파랑) 하나로. 두 가지를 나눠야 할 때만 연한 파랑 */
-  --s-msg: #007aff; --s-money: #007aff; --s-cash: #8cc0ff; --s-like: #007aff; --s-comment: #007aff; --s-chat: #007aff;
-  --s-unsafe: #007aff; --s-safe: #8cc0ff;
+  /* 차트 색 (검증된 범주 팔레트) */
+  --s-msg: #2a78d6; --s-money: #1baf7a; --s-cash: #eda100; --s-like: #e87ba4; --s-comment: #6250d6; --s-chat: #eb6834;
+  --s-unsafe: #2a78d6; --s-safe: #eb6834;
+  --s-cal: #007aff;
   --grid: rgba(0,0,0,.07);
 }
 @media (prefers-color-scheme: dark) {
@@ -42,8 +43,8 @@
     --accent: #0a84ff; --accent-soft: rgba(10,132,255,.2); --toolbar: rgba(30,30,32,.78);
     --shadow-sheet: 0 22px 70px rgba(0,0,0,.6), 0 0 0 .5px rgba(255,255,255,.12);
     --up: #30d158; --down: #ff6961;
-    --s-msg: #0a84ff; --s-money: #0a84ff; --s-cash: #4a7cb8; --s-like: #0a84ff; --s-comment: #0a84ff; --s-chat: #0a84ff;
-    --s-unsafe: #0a84ff; --s-safe: #4a7cb8; --grid: rgba(255,255,255,.07);
+    --s-msg: #3987e5; --s-money: #199e70; --s-cash: #c98500; --s-like: #d55181; --s-comment: #9085e9; --s-chat: #d95926;
+    --s-unsafe: #3987e5; --s-safe: #d95926; --s-cal: #0a84ff; --grid: rgba(255,255,255,.07);
   }
 }
 :root[data-theme="dark"] {
@@ -56,8 +57,8 @@
   --accent: #0a84ff; --accent-soft: rgba(10,132,255,.2); --toolbar: rgba(30,30,32,.78);
   --shadow-sheet: 0 22px 70px rgba(0,0,0,.6), 0 0 0 .5px rgba(255,255,255,.12);
   --up: #30d158; --down: #ff6961;
-  --s-msg: #0a84ff; --s-money: #0a84ff; --s-cash: #4a7cb8; --s-like: #0a84ff; --s-comment: #0a84ff; --s-chat: #0a84ff;
-  --s-unsafe: #0a84ff; --s-safe: #4a7cb8; --grid: rgba(255,255,255,.07);
+  --s-msg: #3987e5; --s-money: #199e70; --s-cash: #c98500; --s-like: #d55181; --s-comment: #9085e9; --s-chat: #d95926;
+  --s-unsafe: #3987e5; --s-safe: #d95926; --s-cal: #0a84ff; --grid: rgba(255,255,255,.07);
 }
 
 * { box-sizing: border-box; }

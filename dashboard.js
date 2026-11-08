@@ -270,7 +270,7 @@
       payout: () => payoutSection(),
       history: () => `<div class="group table-wrap"><table class="tbl"><thead><tr><th class="l">달</th><th>정산 예상 현금</th><th>정산 예상 캐시</th><th>오리지널 지원금</th><th title="크랙이 보내 주는 값을 그대로 보여 줘요">월 슈퍼챗</th><th class="l">기준 기록</th></tr></thead><tbody>${months.map(m => { const gm = M.grant ? M.grant.list.filter(g => !g.off && g.month === m.month).length * M.grant.amount : 0; return `<tr style="cursor:default"><td class="l">${m.month.replace('-', '년 ')}월</td><td class="num">${fmt(m.money)}원</td><td class="num">${fmt(m.cash)}</td><td class="num">${gm ? (M.grant.included ? '' : '+') + fmt(gm) + '원' : '<span class="faint">–</span>'}</td><td class="num">${fmt(m.superChat)}</td><td class="l sub">${esc(m.id)}</td></tr>`; }).join('')}</tbody></table></div>
       <div class="sec-h"><h2>구간 장부</h2><span class="sub">기록과 기록 사이에 늘어난 정산 예상 · ${E.length}구간</span></div>
-      <div class="group table-wrap"><table class="tbl"><thead><tr><th class="l">구간</th><th>현금</th><th>캐시</th><th class="l">메모</th></tr></thead><tbody>${E.map(e => `<tr style="cursor:default"><td class="l num">${esc(e.from)} → ${esc(e.to.slice(5))}</td><td class="num">${e.poolM == null ? '–' : sfmt(e.poolM) + '원'}</td><td class="num">${e.poolC == null ? '–' : sfmt(e.poolC)}</td><td class="l sub small">${e.cross ? '달이 바뀐 구간 · 지난달 말 증가분은 빠졌을 수 있어요' : e.poolM == null && e.poolC == null ? '정산 정보 없음' : ''}</td></tr>`).join('') || '<tr><td class="l sub" colspan="4">아직 구간이 없어요</td></tr>'}</tbody></table></div>
+      <div class="group table-wrap"><table class="tbl"><thead><tr><th class="l">구간</th><th>현금</th><th>캐시</th><th class="l">메모</th></tr></thead><tbody>${(UI.ledAll ? E : E.slice(0, 20)).map(e => `<tr style="cursor:default"><td class="l num">${esc(e.from)} → ${esc(e.to.slice(5))}</td><td class="num">${e.poolM == null ? '–' : sfmt(e.poolM) + '원'}</td><td class="num">${e.poolC == null ? '–' : sfmt(e.poolC)}</td><td class="l sub small">${e.cross ? '달이 바뀐 구간 · 지난달 말 증가분은 빠졌을 수 있어요' : e.poolM == null && e.poolC == null ? '정산 정보 없음' : ''}</td></tr>`).join('') || '<tr><td class="l sub" colspan="4">아직 구간이 없어요</td></tr>'}</tbody></table>${!UI.ledAll && E.length > 20 ? `<div class="group-row more"><button class="link" data-more="ledAll">이전 구간 ${E.length - 20}개 더 보기</button></div>` : ''}</div>
       <p class="note">작품별 수익은 추정치예요. 두 기록 사이 계정 정산 증가분을 그 사이 작품별 대화 증가 비율로 나눠요. 현금은 오리지널 작품끼리, 캐시는 나머지 작품끼리 나눠요. 추가 기능 사용량이나 온리 가산은 반영되지 않아요.</p>`,
     };
     const tab = sections[UI.rtab] ? UI.rtab : 'month';
@@ -286,7 +286,7 @@
       <div class="group grants">
         <div class="group-row gsum"><div class="grow"><span class="sub">이번 달</span> <b class="num">${G.thisMonth ? '+' + fmt(G.thisMonth) + '원' : '없음'}</b><span class="sep"></span><span class="sub">지금까지</span> <b class="num">${fmt(G.total)}원</b> <span class="sub small">(${G.list.filter(g => !g.off && g.month <= cur).length}건)</span>${G.upcoming ? `<span class="sep"></span><span class="sub">예정</span> <b class="num">${fmt(G.upcoming)}원</b>` : ''}</div></div>
         ${G.list.map(g => { const from = g.from, short = n => esc(n.replace(/^(.{14}).+$/, '$1…'));
-          const when = g.set ? '직접 정한 달' : from.src === 'comment' ? `${g.members.length > 1 ? `「${short(from.name)}」 ` : ''}내 첫 댓글 ${C.tlong(from.comment.t)}` : from.src === 'flip' ? `기록 중 ${C.dlabel(from.flip)}에 오리지널이 됐어요` : `생성 ${esc(from.created || '–')} · ${from.denied ? '댓글을 못 읽어서(성인 인증) 생성 달로 짐작' : from.checked ? '내 댓글이 없어서 생성 달로 짐작' : '확인 전이라 생성 달로 짐작'}`;
+          const when = g.set ? '직접 정한 달' : from.src === 'comment' ? `${g.members.length > 1 ? `「${short(from.name)}」 ` : ''}내 첫 댓글 ${C.tlong(from.comment.t)}` : from.src === 'flip' ? `기록 중 ${C.dlabel(from.flip)}에 오리지널이 됐어요` : `생성 ${esc(from.created || '–')} · ${from.denied ? '댓글을 못 읽어서(성인 인증) 생성 달로 짐작' : from.checked ? '내 댓글이 없어서 생성 달로 짐작' : '아직 확인 전'}`;
           return `<div class="group-row${g.off ? ' off' : ''}"><div class="grow"><b>${esc(g.name)}</b>${g.members.length > 1 ? ` <span class="tag ad">시리즈 ${g.members.length}작품</span>` : ''}
             ${g.members.length > 1 ? `<div class="small gmem">${g.members.map(m => esc(m.name)).join(' · ')}</div>` : ''}<div class="sub small">${when}</div></div>${st(g)}
           <select class="pop-btn" data-gmonth="${esc(g.key)}" aria-label="${esc(g.name)} 지원금 받은 달">${opts(g).map(k => `<option value="${k}"${k === g.month ? ' selected' : ''}>${my(k)}</option>`).join('')}</select>
@@ -315,9 +315,10 @@
     const L = (P.list || []).slice().sort((a, b) => String(b.payoutAt || b.requestedAt).localeCompare(String(a.payoutAt || a.requestedAt)));
     const byYear = {}; L.filter(x => x.status === 'COMPLETED').forEach(x => { const y = new Date(Date.parse(x.payoutAt || x.requestedAt)).getFullYear(); const o = byYear[y] = byYear[y] || { amount: 0, tax: 0, net: 0, n: 0 }; o.amount += x.amount || 0; o.tax += x.tax || 0; o.net += x.net || 0; o.n++; });
     const dshort = iso => { if (!iso) return '–'; const d = new Date(Date.parse(iso)); return `${String(d.getFullYear()).slice(2)}.${H.pad(d.getMonth() + 1)}.${H.pad(d.getDate())}`; };
-    const table = L.length ? `<div class="group table-wrap" style="margin-top:10px"><table class="tbl"><thead><tr><th class="l">지급일</th><th class="l">신청일</th><th>신청 금액</th><th>세금</th><th>실수령</th><th class="l">들어온 곳</th><th class="l">상태</th></tr></thead><tbody>
-      ${L.map(x => `<tr style="cursor:default"><td class="l num">${dshort(x.payoutAt)}</td><td class="l num sub">${dshort(x.requestedAt)}</td><td class="num">${fmt(x.amount)}원</td><td class="num sub">−${fmt(x.tax)}원</td><td class="num"><b>${fmt(x.net)}원</b></td><td class="l small">${(x.sources || []).filter(s => s.amount).map(s => `${SRC[s.source] || esc(s.source)} ${fmt(s.amount)}`).join(' · ') || '<span class="faint">–</span>'}</td><td class="l small ${x.status === 'COMPLETED' ? 'sub' : x.status === 'FAILED' ? 'down' : ''}">${PST[x.status] || esc(x.status || '')}</td></tr>`).join('')}
-      ${Object.keys(byYear).sort().reverse().map(y => `<tr class="sum"><td class="l" colspan="2"><b>${y}년 합계</b> <span class="sub small">${byYear[y].n}번</span></td><td class="num"><b>${fmt(byYear[y].amount)}원</b></td><td class="num"><b>−${fmt(byYear[y].tax)}원</b></td><td class="num"><b>${fmt(byYear[y].net)}원</b></td><td class="l sub small" colspan="2">세금 신고 때 원천징수액 확인용</td></tr>`).join('')}
+    const srcOf = x => (Array.isArray(x.sources) ? x.sources : []).filter(s => s && s.amount), hasSrc = L.some(x => srcOf(x).length);
+    const table = L.length ? `<div class="group table-wrap" style="margin-top:10px"><table class="tbl"><thead><tr><th class="l">지급일</th><th class="l">신청일</th><th>신청 금액</th><th>세금</th><th>실수령</th>${hasSrc ? '<th class="l">들어온 곳</th>' : ''}<th class="l">상태</th></tr></thead><tbody>
+      ${L.map(x => `<tr style="cursor:default"><td class="l num">${dshort(x.payoutAt)}</td><td class="l num sub">${dshort(x.requestedAt)}</td><td class="num">${fmt(x.amount)}원</td><td class="num sub">−${fmt(x.tax)}원</td><td class="num"><b>${fmt(x.net)}원</b></td>${hasSrc ? `<td class="l small">${srcOf(x).map(s => `${SRC[s.source] || esc(s.source)} ${fmt(s.amount)}`).join(' · ') || '<span class="faint">–</span>'}</td>` : ''}<td class="l small ${x.status === 'COMPLETED' ? 'sub' : x.status === 'FAILED' ? 'down' : ''}">${PST[x.status] || esc(x.status || '')}</td></tr>`).join('')}
+      ${Object.keys(byYear).sort().reverse().map(y => `<tr class="sum"><td class="l" colspan="2"><b>${y}년 합계</b> <span class="sub small">${byYear[y].n}번</span></td><td class="num"><b>${fmt(byYear[y].amount)}원</b></td><td class="num"><b>−${fmt(byYear[y].tax)}원</b></td><td class="num"><b>${fmt(byYear[y].net)}원</b></td><td class="l sub small" colspan="${hasSrc ? 2 : 1}">세금 신고 때 원천징수액 확인용</td></tr>`).join('')}
       </tbody></table></div>` : `<div class="group" style="margin-top:10px"><div class="group-row sub">아직 지급 내역이 없어요.</div></div>`;
     return head + tiles + table;
   }
@@ -345,7 +346,7 @@
         <button class="btn" id="rebuild" title="스냅샷이 지워진 옛 구간까지 비우고, 지금 있는 기록만으로 장부를 다시 만들어요" ${S.length ? '' : 'disabled'}>장부 다시 계산</button>
         <span class="sub small" style="margin-left:auto">기록 ${S.length}개</span>
       </div>
-      <div class="group snap-list">${S.map(s => `<label class="group-row"><input type="checkbox" data-pick="${esc(s.id)}" ${PICK.has(s.id) ? 'checked' : ''}><span class="grow num">${esc(s.id)}</span><span class="sub small">작품 ${s.works.length}개</span><span class="small ${s.account ? 'sub' : 'down'}" style="width:92px;text-align:right">${s.account ? '정산 정보 있음' : '정산 정보 없음'}</span></label>`).join('') || '<div class="group-row sub">아직 기록이 없어요.</div>'}</div>
+      <div class="group snap-list">${(UI.recAll ? S : S.slice(0, 30)).map(s => `<label class="group-row"><input type="checkbox" data-pick="${esc(s.id)}" ${PICK.has(s.id) ? 'checked' : ''}><span class="grow num">${esc(s.id)}</span><span class="sub small">작품 ${s.works.length}개</span><span class="small ${s.account ? 'sub' : 'down'}" style="width:92px;text-align:right">${s.account ? '정산 정보 있음' : '정산 정보 없음'}</span></label>`).join('') || '<div class="group-row sub">아직 기록이 없어요.</div>'}${!UI.recAll && S.length > 30 ? `<div class="group-row more"><button class="link" data-more="recAll">이전 기록 ${S.length - 30}개 더 보기</button></div>` : ''}</div>
       <p class="note">기록은 이 브라우저(확장 프로그램 저장소)에 보관돼요. 컴퓨터를 옮기거나 브라우저를 지우기 전에 전체 내보내기로 백업해 두세요. 지운 기록이 있어도 그 구간의 수익은 장부에 남아요.</p>`;
   }
   async function importFiles(files) {
@@ -517,6 +518,8 @@
       if (name === 'calview' || name === 'calmetric') { UI.cal = UI.cal || {}; UI.cal[name === 'calview' ? 'view' : 'metric'] = v; saveUI(); render(); return; }
       UI[name] = v; saveUI(); if (name === 'dMetric') drawSheet(); else render(); return;
     }
+    const more = t.closest('[data-more]');
+    if (more) { UI[more.dataset.more] = true; render(); return; }
     const th = t.closest('th[data-sort]');
     if (th) { const k = th.dataset.sort; if (UI.sortKey === k) UI.sortDir *= -1; else { UI.sortKey = k; UI.sortDir = k === 'name' || k === 'created' ? 1 : -1; } saveUI(); render(); return; }
     if (UI.page === 'calendar' && MODEL && MODEL.S.length && t.closest('[data-cal],[data-day],[data-week]') && window.PulseCal.onClick(calCtx(), t)) { saveUI(); render(); return; }
@@ -566,7 +569,7 @@
 
   (async function start() {
     UI.page = location.hash.slice(1) || 'overview';
-    if (UI.cal) UI.cal.sel = null;
+    if (UI.cal) UI.cal.sel = null; UI.ledAll = UI.recAll = false;
     await load(); render(); await refreshStatus(); setInterval(refreshStatus, 60000);
     // 시리즈나 매입일을 아직 모르는 오리지널 작품이 있으면 조용히 한 번 찾아 둠
     try { if (MODEL && MODEL.grant && MODEL.grant.list.some(g => !g.seriesChecked || !g.checked) && STATUS.loggedIn) send({ type: 'findGrantDates' }); } catch (e) {}
