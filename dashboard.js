@@ -23,7 +23,8 @@
   async function load() {
     const o = await chrome.storage.local.get(['snaps', 'ledger', 'settings', 'meta', 'grantDates', 'payout']);
     DATA.snaps = (o.snaps || []).slice().sort((a, b) => a.t - b.t);
-    DATA.ledger = o.ledger || null;
+    // 계산 방식이 바뀌어도 바로 맞게: 지금 기록으로 장부를 다시 계산해서 씀 (저장은 다음 스냅샷 때)
+    DATA.ledger = H.rebuildLedger(DATA.snaps, o.ledger || null);
     DATA.settings = Object.assign({ auto: 0, theme: 'system' }, o.settings || {});
     DATA.meta = o.meta || {};
     DATA.grantDates = o.grantDates || {};
@@ -113,15 +114,18 @@
   }
 
   // ---------- 페이지: 개요 ----------
-  const goalOf = kind => { const g = (DATA.settings.goals || {})[H.monthKey(MODEL.S[MODEL.S.length - 1].t) + ':' + kind]; return g > 0 ? g : null; };
+  // 지금 정산 주기의 달 (1일 0~6시에는 아직 지난달)
+  const curCyc = () => { const a = MODEL.acct.money.length ? MODEL.acct.money : MODEL.acct.cash; return a.length ? a[a.length - 1].cyc : H.monthKey(MODEL.S[MODEL.S.length - 1].t); };
+  const cycName = () => +curCyc().slice(5);
+  const goalOf = kind => { const g = (DATA.settings.goals || {})[curCyc() + ':' + kind]; return g > 0 ? g : null; };
   const man = v => Math.abs(v) >= 1e4 ? (Math.round(v / 1e3) / 10).toLocaleString('ko-KR', { maximumFractionDigits: 1 }) + '만' : fmt(v);
   const left = d => d < 1 ? Math.max(1, Math.round(d * 24)) + '시간' : (Math.round(d * 10) / 10) + '일';
   function heroPanel(kind) {
     const M = MODEL, money = kind === 'money', fc = money ? M.fcMoney : M.fcCash;
-    const pts = (money ? M.acct.money : M.acct.cash).filter(p => H.monthKey(p.t) === H.monthKey(M.S[M.S.length - 1].t)).map(p => ({ t: p.t, v: p.raw, id: p.id }));
+    const pts = (money ? M.acct.money : M.acct.cash).filter(p => p.cyc === curCyc()).map(p => ({ t: p.t, v: p.raw, id: p.id }));
     const last = pts[pts.length - 1], unit = money ? '원' : '캐시';
     const other = money ? M.acct.cash : M.acct.money, ofc = money ? M.fcCash : M.fcMoney;
-    const mName = new Date(M.S[M.S.length - 1].t).getMonth() + 1;
+    const mName = cycName();
     const G = M.grant, gAdd = money && G && G.thisMonth > 0 && !G.included ? G.thisMonth : 0;
     const goal = goalOf(kind), plan = H.goalPlan(fc && gAdd ? Object.assign({}, fc, { now: fc.now + gAdd, value: fc.value + gAdd }) : fc, goal);
     let goalHtml = '';
@@ -155,8 +159,8 @@
     const M = MODEL;
     ['money', 'cash'].forEach(kind => {
       const el = document.querySelector(`[data-chart="month-${kind}"]`); if (!el) return;
-      const pts = (kind === 'money' ? M.acct.money : M.acct.cash).filter(p => H.monthKey(p.t) === H.monthKey(M.S[M.S.length - 1].t)).map(p => ({ t: p.t, v: p.raw, id: p.id }));
-      C.month(el, { pts, fc: kind === 'money' ? M.fcMoney : M.fcCash, goal: goalOf(kind), color: COL(kind), fmt: n => fmt(n) + (kind === 'money' ? '원' : '캐시'), label: kind === 'money' ? '정산 예상 현금' : '정산 예상 캐시' });
+      const pts = (kind === 'money' ? M.acct.money : M.acct.cash).filter(p => p.cyc === curCyc()).map(p => ({ t: p.t, v: p.raw, id: p.id }));
+      C.month(el, { pts, cyc: curCyc(), fc: kind === 'money' ? M.fcMoney : M.fcCash, goal: goalOf(kind), color: COL(kind), fmt: n => fmt(n) + (kind === 'money' ? '원' : '캐시'), label: kind === 'money' ? '정산 예상 현금' : '정산 예상 캐시' });
     });
   }
 
@@ -165,8 +169,8 @@
     const lastMoney = M.acct.money.length ? M.acct.money[M.acct.money.length - 1].raw : null;
     const gAdd = G && G.thisMonth && !G.included ? G.thisMonth : 0;
     const dMsg = H.delta(M.totals.msg, R.start, R.end), dMoney = H.delta(M.acct.money, R.start, R.end), mom = H.momentum(M.totals.msg, R);
-    const nd = P && P.nextPayoutDate ? Date.parse(P.nextPayoutDate) : null, dleft = nd ? Math.ceil((H.dayStart(nd) - H.dayStart(Date.now())) / H.DAY) : null;
-    const mName = new Date(M.S[M.S.length - 1].t).getMonth() + 1, pl = H.PERIODS[UI.period].label;
+    const pend = H.pendingPayouts(P), pdl = pend && pend.at ? Math.ceil((H.dayStart(pend.at) - H.dayStart(Date.now())) / H.DAY) : null;
+    const mName = cycName(), pl = H.PERIODS[UI.period].label;
     const kpi = (cls, lbl, v, sub, href) => `<a class="kpi ${cls}" ${href ? `href="${href}"` : ''}><div class="lbl">${lbl}</div><div class="v num">${v}</div><div class="s">${sub}</div></a>`;
     const list = M.fams.filter(visFilter).filter(f => f.inc > 0).sort((a, b) => (b.inc || 0) - (a.inc || 0)), top = list.slice(0, 7);
     const span = R.end - R.start, allZero = (!dMsg || !dMsg.v) && (!dMoney || !dMoney.v);
@@ -175,7 +179,7 @@
         ${kpi('k-money', `<span class="sw" style="background:var(--s-money)"></span>${mName}월 정산 예상`, lastMoney != null ? `${fmt(lastMoney)}<small>원</small>` : '–', fc ? `월말 ≈ <b>${man(fc.value + gAdd)}</b>${gAdd ? ' <span class="faint">지원금 포함</span>' : ''}` : '기록이 더 필요해요', '#revenue')}
         ${kpi('', `<span class="sw" style="background:var(--s-msg)"></span>${pl} 대화`, dMsg ? sfmt(dMsg.v) : '–', dMsg ? `하루 ${sfmt(dMsg.perDay)}${mom ? ` · <span title="${momTitle(mom)}">${momHtml(mom)}</span>` : ''}` : '')}
         ${kpi('', `<span class="sw" style="background:var(--s-money)"></span>${pl} 늘어난 현금`, dMoney ? `${sfmt(dMoney.v)}<small>원</small>` : '–', dMoney ? `하루 ${sfmt(dMoney.perDay)}원` : '')}
-        ${nd ? kpi('', '다음 지급', `${new Date(nd).getMonth() + 1}월 ${new Date(nd).getDate()}일`, `${dleft > 0 ? dleft + '일 남음' : '오늘'}${fc && P.taxRate != null ? ` · 실수령 ≈ ${man((fc.value + gAdd) * (1 - P.taxRate))}` : ''}`, '#revenue')
+        ${pend ? kpi('', '다음 입금', `${fmt(pend.net)}<small>원</small>`, `${pend.at ? `${new Date(pend.at).getMonth() + 1}월 ${new Date(pend.at).getDate()}일` : ''}${pdl != null ? ` · ${pdl > 0 ? pdl + '일 남음' : '오늘'}` : ''} · 세후`, '#revenue')
           : kpi('', `<span class="sw" style="background:var(--s-cash)"></span>정산 예상 캐시`, M.acct.cash.length ? fmt(M.acct.cash[M.acct.cash.length - 1].raw) : '–', M.fcCash ? `하루 ${sfmt(M.fcCash.perDay)}` : '')}
       </div>
       <div class="ov-grid">
@@ -293,7 +297,7 @@
       </div>`;
   }
   const SRC = { SETTLEMENT: '크리에이터 정산', NON_CREATOR_SETTLEMENT: '일반 정산', PAYBACK_EVENT: '이벤트 페이백' };
-  const PST = { COMPLETED: '지급 완료', REQUESTED: '신청됨', PENDING: '처리 중', PROCESSING: '처리 중', FAILED: '실패', CANCELED: '취소', CANCELLED: '취소' };
+  const PST = { COMPLETED: '지급 완료', SCHEDULED: '지급 예정', REQUESTED: '신청됨', PENDING: '처리 중', PROCESSING: '처리 중', FAILED: '실패', CANCELED: '취소', CANCELLED: '취소' };
   let PAYOUT_BUSY = false;
   function payoutSection() {
     const P = DATA.payout, M = MODEL;
@@ -303,9 +307,10 @@
     const nd = P.nextPayoutDate ? Date.parse(P.nextPayoutDate) : null, dleft = nd ? Math.ceil((H.dayStart(nd) - H.dayStart(Date.now())) / H.DAY) : null;
     const canW = P.withdrawable != null && P.minAmount != null && P.withdrawable >= P.minAmount;
     const tiles = `<div class="group tiles tiles-3">
-      <div class="tile"><div class="lbl">다음 지급일</div><div class="v">${nd ? C.dlong(nd) : '–'}</div><div class="s">${dleft != null ? (dleft > 0 ? `${dleft}일 남음` : dleft === 0 ? '오늘' : '지났어요') : ''} · 출금 신청한 돈이 들어오는 날</div></div>
+      ${(() => { const pd = H.pendingPayouts(P); if (pd) { const dl = pd.at ? Math.ceil((H.dayStart(pd.at) - H.dayStart(Date.now())) / H.DAY) : null; return `<div class="tile"><div class="lbl">다음 입금</div><div class="v">${pd.at ? C.dlong(pd.at) : '–'}</div><div class="s"><b class="num" style="color:var(--label)">${fmt(pd.net)}원</b> 들어와요 (세후)${dl != null ? ` · ${dl > 0 ? dl + '일 남음' : dl === 0 ? '오늘' : '곧'}` : ''}</div></div>`; }
+        return `<div class="tile"><div class="lbl">다음 입금</div><div class="v sub">없음</div><div class="s">출금 신청한 돈이 없어요${nd ? ` · 지금 신청하면 ${new Date(nd).getMonth() + 1}월 ${new Date(nd).getDate()}일에 들어와요` : ''}</div></div>`; })()}
       <div class="tile"><div class="lbl">출금 가능 잔액</div><div class="v num">${fmt(P.withdrawable)}<span class="sub" style="font-size:13px;font-weight:500">원</span></div><div class="s">${canW ? `<a class="link" href="https://crack.wrtn.ai/crack-cash/withdrawal" target="_blank" rel="noopener">크랙에서 출금 신청하기</a>` : `${fmt(P.minAmount)}원부터 출금할 수 있어요 · 매월 1일 정산 뒤 채워져요`}</div></div>
-      <div class="tile"><div class="lbl">이번 달 실수령 예상</div><div class="v num">${fc && tax != null ? '≈ ' + fmt((fc.value + add) * (1 - tax)) : '–'}<span class="sub" style="font-size:13px;font-weight:500">원</span></div><div class="s">${fc && tax != null ? `월말 예상${add ? '+지원금' : ''} ${C.kfmt(fc.value + add)}원에서 세금 ${(tax * 100).toFixed(1)}% 뺀 값` : '월말 예상이 나오면 계산돼요'}</div></div>
+      <div class="tile"><div class="lbl">${cycName()}월분 실수령 예상</div><div class="v num">${fc && tax != null ? '≈ ' + fmt((fc.value + add) * (1 - tax)) : '–'}<span class="sub" style="font-size:13px;font-weight:500">원</span></div><div class="s">${fc && tax != null ? `월말 예상${add ? '+지원금' : ''} ${C.kfmt(fc.value + add)}원에서 세금 ${(tax * 100).toFixed(1)}% 뺀 값 · ${+H.nextMonthKey(curCyc()).slice(5)}월 1일 정산 뒤 출금해서 받아요` : '월말 예상이 나오면 계산돼요'}</div></div>
     </div>`;
     const L = (P.list || []).slice().sort((a, b) => String(b.payoutAt || b.requestedAt).localeCompare(String(a.payoutAt || a.requestedAt)));
     const byYear = {}; L.filter(x => x.status === 'COMPLETED').forEach(x => { const y = new Date(Date.parse(x.payoutAt || x.requestedAt)).getFullYear(); const o = byYear[y] = byYear[y] || { amount: 0, tax: 0, net: 0, n: 0 }; o.amount += x.amount || 0; o.tax += x.tax || 0; o.net += x.net || 0; o.n++; });
@@ -444,8 +449,8 @@
     });
   }
   async function setGoal(kind) {
-    const key = H.monthKey(MODEL.S[MODEL.S.length - 1].t) + ':' + kind, cur = (DATA.settings.goals || {})[key];
-    const m = new Date(MODEL.S[MODEL.S.length - 1].t).getMonth() + 1;
+    const key = curCyc() + ':' + kind, cur = (DATA.settings.goals || {})[key];
+    const m = cycName();
     const v = await askNumber(`${m}월 ${kind === 'money' ? '현금' : '캐시'} 목표`, '정산 예상이 이 금액에 닿으려면 하루에 얼마씩 늘어야 하는지 알려 줘요. 달마다 따로 정해요.', cur, kind === 'money' ? '원' : '캐시');
     if (v === undefined) return;
     const goals = Object.assign({}, DATA.settings.goals || {}); if (v > 0) goals[key] = v; else delete goals[key];
