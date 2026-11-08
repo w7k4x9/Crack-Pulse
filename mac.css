@@ -29,7 +29,6 @@
   /* 차트 색 (검증된 범주 팔레트) */
   --s-msg: #2a78d6; --s-money: #1baf7a; --s-cash: #eda100; --s-like: #e87ba4; --s-comment: #6250d6; --s-chat: #eb6834;
   --s-unsafe: #2a78d6; --s-safe: #eb6834;
-  --s-cal: #007aff;
   --grid: rgba(0,0,0,.07);
 }
 @media (prefers-color-scheme: dark) {
@@ -44,7 +43,7 @@
     --shadow-sheet: 0 22px 70px rgba(0,0,0,.6), 0 0 0 .5px rgba(255,255,255,.12);
     --up: #30d158; --down: #ff6961;
     --s-msg: #3987e5; --s-money: #199e70; --s-cash: #c98500; --s-like: #d55181; --s-comment: #9085e9; --s-chat: #d95926;
-    --s-unsafe: #3987e5; --s-safe: #d95926; --s-cal: #0a84ff; --grid: rgba(255,255,255,.07);
+    --s-unsafe: #3987e5; --s-safe: #d95926; --grid: rgba(255,255,255,.07);
   }
 }
 :root[data-theme="dark"] {
@@ -58,7 +57,7 @@
   --shadow-sheet: 0 22px 70px rgba(0,0,0,.6), 0 0 0 .5px rgba(255,255,255,.12);
   --up: #30d158; --down: #ff6961;
   --s-msg: #3987e5; --s-money: #199e70; --s-cash: #c98500; --s-like: #d55181; --s-comment: #9085e9; --s-chat: #d95926;
-  --s-unsafe: #3987e5; --s-safe: #d95926; --s-cal: #0a84ff; --grid: rgba(255,255,255,.07);
+  --s-unsafe: #3987e5; --s-safe: #d95926; --grid: rgba(255,255,255,.07);
 }
 
 * { box-sizing: border-box; }
