@@ -460,7 +460,8 @@
   function toast(t) { const el = $('#toast'); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => el.hidden = true, 4200); }
 
   // ---------- 그리기 ----------
-  const PAGES = { overview: ['개요', pageOverview], works: ['작품', pageWorks], revenue: ['수익', pageRevenue], records: ['기록', pageRecords], settings: ['설정', pageSettings] };
+  const calCtx = () => ({ M: MODEL, UI, H, C, seg, COL, esc });
+  const PAGES = { overview: ['개요', pageOverview], calendar: ['달력', () => window.PulseCal.page(calCtx())], works: ['작품', pageWorks], revenue: ['수익', pageRevenue], records: ['기록', pageRecords], settings: ['설정', pageSettings] };
   function welcome() {
     return `<div class="welcome"><img src="icons/128.png" width="72" height="72" alt=""><h2>아직 기록이 없어요</h2><p>스냅샷을 하루 몇 번씩 쌓으면 작품별 하루 추이와 이번 달 정산 예상이 여기에 나타나요.</p>
       <div class="group steps">
@@ -474,6 +475,7 @@
   function tools(page) {
     if (page === 'records' || page === 'settings' || !DATA.snaps.length) return SNAP_BTN;
     if (page === 'revenue' && !['month', 'works'].includes(UI.rtab)) return SNAP_BTN;
+    if (page === 'calendar') return window.PulseCal.tools(calCtx()) + SNAP_BTN;
     let t = '';
     if (page === 'works') t += `<label class="search"><svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8.5" cy="8.5" r="5.5"/><path d="M13 13l4 4"/></svg><input type="search" id="q" placeholder="작품 검색" value="${esc(UI.q)}"></label>` + seg('vis', [['public', '공개'], ['all', '전체']], UI.vis);
     return t + periodSeg() + SNAP_BTN;
@@ -488,6 +490,7 @@
     $('#tbTools').innerHTML = tools(page);
     $('#tbSnap').onclick = snapshot;
     $('#content').innerHTML = empty ? welcome() : PAGES[page][1]();
+    if (page === 'calendar' && !empty) { $('#pageTitle').textContent = window.PulseCal.title(calCtx()); $('#pageSub').textContent = window.PulseCal.sub(calCtx()); }
     if (!empty) { if (page === 'revenue') drawHeroCharts(); if (page === 'overview') drawDaily(); if (page === 'revenue') drawRevenue(); }
     bindDrop();
     const q = $('#q'); if (q) q.oninput = () => { UI.q = q.value; $('#content').innerHTML = pageWorks(); };
@@ -511,10 +514,12 @@
     if (sb) {
       const name = sb.closest('[data-seg]').dataset.seg, v = sb.dataset.v;
       if (name === 'auto' || name === 'theme') { const s = Object.assign({}, DATA.settings, { [name]: name === 'auto' ? +v : v }); await chrome.storage.local.set({ settings: s }); if (name === 'theme') window.hhApplyTheme(v); if (name === 'auto' && +v) toast(`자동 스냅샷: 하루 ${v}번`); return; }
+      if (name === 'calview' || name === 'calmetric') { UI.cal = UI.cal || {}; UI.cal[name === 'calview' ? 'view' : 'metric'] = v; saveUI(); render(); return; }
       UI[name] = v; saveUI(); if (name === 'dMetric') drawSheet(); else render(); return;
     }
     const th = t.closest('th[data-sort]');
     if (th) { const k = th.dataset.sort; if (UI.sortKey === k) UI.sortDir *= -1; else { UI.sortKey = k; UI.sortDir = k === 'name' || k === 'created' ? 1 : -1; } saveUI(); render(); return; }
+    if (UI.page === 'calendar' && MODEL && MODEL.S.length && t.closest('[data-cal],[data-day],[data-week]') && window.PulseCal.onClick(calCtx(), t)) { saveUI(); render(); return; }
     const fam = t.closest('[data-fam]');
     if (fam && !t.closest('a')) { openSheet(fam.dataset.fam); return; }
     if (t.id === 'sheetBack') { closeSheet(); return; }
@@ -546,6 +551,7 @@
   });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && SHEET) closeSheet();
+    if (UI.page === 'calendar' && !SHEET && MODEL && MODEL.S.length && !/INPUT|SELECT|TEXTAREA/.test((e.target.tagName || '')) && { ArrowLeft: 1, ArrowRight: 1, ArrowUp: 1, ArrowDown: 1 }[e.key]) { e.preventDefault(); window.PulseCal.move(calCtx(), { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key]); render(); }
     if (e.key === 'Enter' && e.target.dataset && e.target.dataset.fam) openSheet(e.target.dataset.fam);
   });
   window.addEventListener('hashchange', () => { UI.page = location.hash.slice(1) || 'overview'; SHEET = null; $('#sheetBack').hidden = true; render(); $('.main').scrollTop = 0; });
@@ -560,6 +566,7 @@
 
   (async function start() {
     UI.page = location.hash.slice(1) || 'overview';
+    if (UI.cal) UI.cal.sel = null;
     await load(); render(); await refreshStatus(); setInterval(refreshStatus, 60000);
     // 시리즈나 매입일을 아직 모르는 오리지널 작품이 있으면 조용히 한 번 찾아 둠
     try { if (MODEL && MODEL.grant && MODEL.grant.list.some(g => !g.seriesChecked || !g.checked) && STATUS.loggedIn) send({ type: 'findGrantDates' }); } catch (e) {}
