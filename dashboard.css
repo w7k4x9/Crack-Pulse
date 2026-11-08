@@ -235,9 +235,9 @@ a.kpi[href]:hover { background: var(--panel-2); }
 .notice b { font-weight: 600; }
 
 /* ---- 달력 ---- */
-:root { --sun: #d93a3a; --sat: #2f6fd1; --hatch: rgba(0,0,0,.06); }
-:root[data-theme="dark"] { --sun: #ff7b72; --sat: #6aa6ff; --hatch: rgba(255,255,255,.07); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --sun: #ff7b72; --sat: #6aa6ff; --hatch: rgba(255,255,255,.07); } }
+:root { --sun: var(--label-2); --sat: var(--label-2); --hatch: rgba(0,0,0,.06); }
+:root[data-theme="dark"] { --sun: var(--label-2); --sat: var(--label-2); --hatch: rgba(255,255,255,.07); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --sun: var(--label-2); --sat: var(--label-2); --hatch: rgba(255,255,255,.07); } }
 .sun { color: var(--sun); } .sat { color: var(--sat); }
 .calnav { display: inline-flex; gap: 0; }
 .calnav .tbtn { border-radius: 0; padding: 0 9px; }
