@@ -14,14 +14,14 @@
   let DATA = { snaps: [], ledger: null, settings: { auto: 0, theme: 'system' }, meta: {} };
   let STATUS = { run: { busy: false }, loggedIn: null, meta: {}, lock: null };
   const UI = Object.assign({ page: 'overview', period: '7d', metric: 'msg', dview: 'day', rtab: 'month', group: true, vis: 'public', q: '', sortKey: 'inc', sortDir: -1, dMetric: 'msg' }, (() => { try { return JSON.parse(localStorage.getItem('hh_ui') || '{}'); } catch (e) { return {}; } })());
-  const saveUI = () => { try { const { page, sheet, q, ...keep } = UI; localStorage.setItem('hh_ui', JSON.stringify(keep)); } catch (e) {} };
+  const saveUI = () => { try { const { page, sheet, q, cq, cmore, ...keep } = UI; localStorage.setItem('hh_ui', JSON.stringify(keep)); } catch (e) {} };
   let SHEET = null; // 열려 있는 작품 key
 
   const hasChrome = !!(window.chrome && chrome.storage && chrome.storage.local);
   const send = msg => hasChrome && chrome.runtime && chrome.runtime.sendMessage ? chrome.runtime.sendMessage(msg) : Promise.resolve(null);
 
   async function load() {
-    const o = await chrome.storage.local.get(['snaps', 'ledger', 'settings', 'meta', 'grantDates', 'payout']);
+    const o = await chrome.storage.local.get(['snaps', 'ledger', 'settings', 'meta', 'grantDates', 'payout', 'cmt']);
     DATA.snaps = (o.snaps || []).slice().sort((a, b) => a.t - b.t);
     // 계산 방식이 바뀌어도 바로 맞게: 지금 기록으로 장부를 다시 계산해서 씀 (저장은 다음 스냅샷 때)
     DATA.ledger = H.rebuildLedger(DATA.snaps, o.ledger || null);
@@ -29,6 +29,7 @@
     DATA.meta = o.meta || {};
     DATA.grantDates = o.grantDates || {};
     DATA.payout = o.payout || null;
+    DATA.cmt = o.cmt || null;
     window.hhApplyTheme(DATA.settings.theme);
   }
   let UPD = null;
@@ -94,11 +95,51 @@
       <div class="st"><svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 10a6 6 0 0 1 10.2-4.3L16 7.5M16 3.5v4h-4M16 10a6 6 0 0 1-10.2 4.3L4 12.5M4 16.5v-4h4"/></svg>자동 ${auto ? '하루 ' + auto + '번' : '꺼짐'}</div>
       ${m.lastError ? `<div class="err">${esc(m.lastError.text)}</div>` : ''}`;
     $('#sLogin').onclick = () => send({ type: 'openCrack' });
+    drawNavCount();
     const tb = $('#tbSnap');
     if (tb) { tb.disabled = !!(run.busy || (L && L.hard)); tb.classList.toggle('busy', !!run.busy); tb.querySelector('span').textContent = run.busy ? (run.text || '받는 중') : L && L.hard ? `쉬는 중 ${Math.ceil(L.ms / 60000)}분` : '스냅샷'; tb.title = run.busy ? '받는 중이에요' : '크랙에서 지금 기록 받기'; }
     const su = $('#sUpd'); if (su) su.onclick = () => send({ type: 'openUpdate' });
   }
 
+  function drawNavCount() {
+    const el = $('#navCmt'); if (!el) return;
+    const st = window.PulseCmtCore.stats(DATA.cmt);
+    el.textContent = st.need ? String(st.need) : ''; el.classList.toggle('fresh', !!st.fresh); el.hidden = !st.need;
+    el.title = st.need ? `답글이 필요한 댓글 ${st.need}개${st.react ? ` · 내 답글 뒤 반응 ${st.react}개` : ''}${st.fresh ? ` · 새로 온 것 ${st.fresh}개` : ''}` : '';
+    if (!st.need && st.fresh) { el.hidden = false; el.textContent = '•'; el.title = `새 반응 ${st.fresh}개`; }
+  }
+  // ---------- 댓글 ----------
+  const CM = () => window.PulseCmt.S;
+  const cmtCtx = () => ({ C: DATA.cmt, UI, seg, settings: DATA.settings });
+  let seenT = null;
+  function markSeen() { clearTimeout(seenT); seenT = setTimeout(() => { if (UI.page === 'comments' && document.visibilityState === 'visible' && DATA.cmt && DATA.cmt.checkedAt) send({ type: 'cmtSeen', at: Date.now() }); }, 1500); }
+  function drawComments() { if (UI.page !== 'comments') return; $('#content').innerHTML = window.PulseCmt.page(cmtCtx()); $('#tbTools').innerHTML = window.PulseCmt.tools(cmtCtx()); $('#pageSub').textContent = window.PulseCmt.sub(cmtCtx()); bindCmtInputs(); window.PulseCmt.fold(); drawNavCount(); markSeen(); }
+  function bindCmtInputs() {
+    const q = $('#cq'); if (q) q.oninput = () => { UI.cq = q.value; $('#content').innerHTML = window.PulseCmt.page(cmtCtx()); bindCmtInputs(); window.PulseCmt.fold(); };
+    const w = $('#cWork'); if (w) w.onchange = () => { UI.cwork = w.value; saveUI(); drawComments(); };
+    document.querySelectorAll('[data-cdraft]').forEach(ta => {
+      ta.oninput = () => { CM().drafts[ta.dataset.cdraft] = ta.value; const c = document.querySelector(`[data-ccount="${ta.dataset.cdraft}"]`); if (c) c.textContent = ta.value.length; };
+      ta.onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendReply(ta.dataset.cdraft); } };
+    });
+  }
+  async function checkComments() {
+    const S = CM(); if (S.checking) return; S.checking = true; S.prog = '확인 중'; drawComments();
+    const r = await send({ type: 'checkComments' }); S.checking = false; S.prog = '';
+    await load(); drawComments();
+    if (!r) return;
+    if (r.ok) toast(r.added ? `새 댓글 ${r.added}개 · 답글 기다리는 댓글 ${r.need}개` : `작품 ${r.works}개 확인 · 답글 기다리는 댓글 ${r.need}개`);
+    else if (r.login) { if (await dialog('크랙 로그인이 필요해요', '크랙을 열어 로그인한 뒤 다시 눌러 주세요.', '크랙 열기')) send({ type: 'openCrack' }); }
+    else toast(r.error || '확인하지 못했어요');
+  }
+  async function sendReply(id) {
+    const S = CM(), text = (S.drafts[id] || '').trim();
+    if (!text || S.busy[id]) return;
+    S.busy[id] = 'send'; S.err[id] = ''; drawComments();
+    const r = await send({ type: 'replyComment', id, content: text });
+    S.busy[id] = null;
+    if (r && r.ok) { delete S.drafts[id]; S.open = null; S.kept.set(id, (window.PulseCmtCore.level(DATA.cmt.threads[id]) || 'reply')); await load(); drawComments(); toast('답글을 올렸어요'); }
+    else { S.err[id] = (r && r.error) || '답글을 올리지 못했어요'; drawComments(); const ta = document.querySelector(`[data-cdraft="${id}"]`); if (ta) ta.focus(); }
+  }
   async function snapshot() {
     if (!hasChrome) return;
     let r = await send({ type: 'snapshot' });
@@ -378,6 +419,9 @@
       <div class="sec-h"><h2>자동 스냅샷</h2></div>
       <div class="group"><div class="group-row"><div class="grow">받는 횟수<div class="sub small">브라우저가 켜져 있으면 30분마다 확인해서, 정한 간격이 지났을 때 알아서 받아요.</div></div>${seg('auto', [[0, '끄기'], [1, '하루 1번'], [2, '하루 2번'], [3, '하루 3번']], s.auto)}</div></div>
       <p class="note">비공식 API를 써서, 몇 분마다 받으면 크랙이 요청을 막을 수 있어요. 그래서 하루 3번까지만 고를 수 있고, 막히면 3시간 동안 쉬어요.</p>
+      <div class="sec-h"><h2>댓글</h2></div>
+      <div class="group"><div class="group-row"><div class="grow">새 댓글 확인<div class="sub small">공개·링크 공개 작품의 새 댓글과 답글을 확인해요. 작품마다 최신 댓글만 읽어서 가벼워요.</div></div>${seg('cmtEvery', [[0, '끄기'], [30, '30분'], [60, '1시간'], [180, '3시간']], s.cmtEvery == null ? 60 : s.cmtEvery)}</div>
+      <div class="group-row"><div class="grow">알림 띄우기<div class="sub small">답글 기다리는 새 댓글이 오면 컴퓨터 알림을 띄워요. 누르면 댓글 화면이 열려요.</div></div><input type="checkbox" class="switch" id="cmtNotify" ${s.cmtNotify === false ? '' : 'checked'}></div></div>
       <div class="sec-h"><h2>화면</h2></div>
       <div class="group"><div class="group-row"><div class="grow">모양</div>${seg('theme', [['system', '시스템'], ['light', '라이트'], ['dark', '다크']], s.theme)}</div>
       <div class="group-row"><div class="grow">세이프 버전 합쳐 보기<div class="sub small">"작품명"과 "작품명 ˢᵃᶠᵉᵗʸ"를 한 작품으로 묶어서 봐요.</div></div><input type="checkbox" class="switch" id="grp" ${UI.group ? 'checked' : ''}></div></div>
@@ -462,7 +506,7 @@
 
   // ---------- 그리기 ----------
   const calCtx = () => ({ M: MODEL, UI, H, C, seg, COL, esc });
-  const PAGES = { overview: ['개요', pageOverview], calendar: ['달력', () => window.PulseCal.page(calCtx())], works: ['작품', pageWorks], revenue: ['수익', pageRevenue], records: ['기록', pageRecords], settings: ['설정', pageSettings] };
+  const PAGES = { overview: ['개요', pageOverview], calendar: ['달력', () => window.PulseCal.page(calCtx())], works: ['작품', pageWorks], comments: ['댓글', () => window.PulseCmt.page(cmtCtx())], revenue: ['수익', pageRevenue], records: ['기록', pageRecords], settings: ['설정', pageSettings] };
   function welcome() {
     return `<div class="welcome"><img src="icons/128.png" width="72" height="72" alt=""><h2>아직 기록이 없어요</h2><p>스냅샷을 하루 몇 번씩 쌓으면 작품별 하루 추이와 이번 달 정산 예상이 여기에 나타나요.</p>
       <div class="group steps">
@@ -474,6 +518,7 @@
   }
   const SNAP_BTN = `<button class="tbtn" id="tbSnap" title="크랙에서 지금 기록 받기"><svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 10a6 6 0 1 1-1.8-4.3"/><path d="M16.2 3.5v3.2H13"/></svg><span>스냅샷</span></button>`;
   function tools(page) {
+    if (page === 'comments') return window.PulseCmt.tools(cmtCtx());
     if (page === 'records' || page === 'settings' || !DATA.snaps.length) return SNAP_BTN;
     if (page === 'revenue' && !['month', 'works'].includes(UI.rtab)) return SNAP_BTN;
     if (page === 'calendar') return window.PulseCal.tools(calCtx()) + SNAP_BTN;
@@ -486,15 +531,16 @@
     MODEL = build();
     document.querySelectorAll('.nav').forEach(a => a.classList.toggle('on', a.dataset.page === page));
     $('#pageTitle').textContent = PAGES[page][0];
-    const empty = !DATA.snaps.length && page !== 'records' && page !== 'settings';
-    $('#pageSub').textContent = empty ? '' : (page === 'records' || page === 'settings') ? '' : periodSub();
+    const empty = !DATA.snaps.length && page !== 'records' && page !== 'settings' && page !== 'comments';
+    $('#pageSub').textContent = empty ? '' : page === 'comments' ? window.PulseCmt.sub(cmtCtx()) : (page === 'records' || page === 'settings') ? '' : periodSub();
     $('#tbTools').innerHTML = tools(page);
-    $('#tbSnap').onclick = snapshot;
+    const tbs = $('#tbSnap'); if (tbs) tbs.onclick = snapshot;
     $('#content').innerHTML = empty ? welcome() : PAGES[page][1]();
     if (page === 'calendar' && !empty) { $('#pageTitle').textContent = window.PulseCal.title(calCtx()); $('#pageSub').textContent = window.PulseCal.sub(calCtx()); }
     if (!empty) { if (page === 'revenue') drawHeroCharts(); if (page === 'overview') drawDaily(); if (page === 'revenue') drawRevenue(); }
     bindDrop();
     const q = $('#q'); if (q) q.oninput = () => { UI.q = q.value; $('#content').innerHTML = pageWorks(); };
+    if (page === 'comments') { bindCmtInputs(); window.PulseCmt.fold(); markSeen(); }
     if (SHEET) drawSheet();
     drawSide();
   }
@@ -514,9 +560,21 @@
     const sb = t.closest('[data-seg] button');
     if (sb) {
       const name = sb.closest('[data-seg]').dataset.seg, v = sb.dataset.v;
+      if (name === 'cmtEvery') { await chrome.storage.local.set({ settings: Object.assign({}, DATA.settings, { cmtEvery: +v }) }); toast(+v ? `새 댓글을 ${+v >= 60 ? +v / 60 + '시간' : v + '분'}마다 확인해요` : '댓글 자동 확인을 껐어요'); return; }
       if (name === 'auto' || name === 'theme') { const s = Object.assign({}, DATA.settings, { [name]: name === 'auto' ? +v : v }); await chrome.storage.local.set({ settings: s }); if (name === 'theme') window.hhApplyTheme(v); if (name === 'auto' && +v) toast(`자동 스냅샷: 하루 ${v}번`); return; }
       if (name === 'calview' || name === 'calmetric') { UI.cal = UI.cal || {}; UI.cal[name === 'calview' ? 'view' : 'metric'] = v; saveUI(); render(); return; }
       UI[name] = v; saveUI(); if (name === 'dMetric') drawSheet(); else render(); return;
+    }
+    if (UI.page === 'comments') {
+      const S = CM(), g = k => { const el = t.closest('[data-' + k + ']'); return el ? el.dataset[k.replace(/-([a-z])/g, (m, c) => c.toUpperCase())] : null; };
+      if (t.closest('#cCheck')) { checkComments(); return; }
+      let id;
+      if ((id = g('creply'))) { S.open = S.open === id ? null : id; S.err[id] = ''; drawComments(); const ta = document.querySelector(`[data-cdraft="${id}"]`); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } return; }
+      if ((id = g('csend'))) { sendReply(id); return; }
+      if ((id = g('cmore'))) { S.open = 'all:' + id; drawComments(); return; }
+      if ((id = g('cdone'))) { S.kept.set(id, window.PulseCmtCore.level(DATA.cmt.threads[id]) || 'reply'); await send({ type: 'cmtDone', id }); await load(); drawComments(); toast('목록에서 뺐어요. 새 답글이 달리면 다시 나와요'); return; }
+      if ((id = g('clike'))) { const T = DATA.cmt && DATA.cmt.threads[id]; if (!T) return; S.busy[id] = 'like'; drawComments(); const r = await send({ type: 'likeComment', id, on: !T.liked }); S.busy[id] = null; await load(); drawComments(); if (!r || !r.ok) toast((r && r.error) || '좋아요를 바꾸지 못했어요'); return; }
+      const go = t.closest('[data-seg-go]'); if (go) { UI.cview = go.dataset.segGo; saveUI(); render(); return; }
     }
     const more = t.closest('[data-more]');
     if (more) { UI[more.dataset.more] = true; render(); return; }
@@ -550,6 +608,7 @@
     if (t.id === 'gAmt') { const v = +String(t.value).replace(/[^\d]/g, ''); saveGrant(g => { g.amount = v > 0 ? v : 300000; }); return; }
     const p = e.target.dataset && e.target.dataset.pick;
     if (p) { if (e.target.checked) PICK.add(p); else PICK.delete(p); const b = $('#delSel'); if (b) { b.disabled = !PICK.size; b.textContent = '선택한 기록 지우기' + (PICK.size ? ` (${PICK.size})` : ''); } return; }
+    if (e.target.id === 'cmtNotify') { chrome.storage.local.set({ settings: Object.assign({}, DATA.settings, { cmtNotify: e.target.checked }) }); return; }
     if (e.target.id === 'grp') { UI.group = e.target.checked; saveUI(); setTimeout(render, 220); }
   });
   document.addEventListener('keydown', e => {
@@ -557,14 +616,15 @@
     if (UI.page === 'calendar' && !SHEET && MODEL && MODEL.S.length && !/INPUT|SELECT|TEXTAREA/.test((e.target.tagName || '')) && { ArrowLeft: 1, ArrowRight: 1, ArrowUp: 1, ArrowDown: 1 }[e.key]) { e.preventDefault(); window.PulseCal.move(calCtx(), { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key]); render(); }
     if (e.key === 'Enter' && e.target.dataset && e.target.dataset.fam) openSheet(e.target.dataset.fam);
   });
-  window.addEventListener('hashchange', () => { UI.page = location.hash.slice(1) || 'overview'; SHEET = null; $('#sheetBack').hidden = true; render(); $('.main').scrollTop = 0; });
+  window.addEventListener('hashchange', () => { UI.page = location.hash.slice(1) || 'overview'; if (UI.page === 'comments') { CM().seenView = null; CM().kept.clear(); } SHEET = null; $('#sheetBack').hidden = true; render(); $('.main').scrollTop = 0; });
   $('.main').addEventListener('scroll', () => $('.toolbar').classList.toggle('scrolled', $('.main').scrollTop > 4));
   let rz = null; new ResizeObserver(() => { clearTimeout(rz); rz = setTimeout(() => { if (!MODEL || !MODEL.R) return; if (UI.page === 'revenue') drawHeroCharts(); if (UI.page === 'overview') drawDaily(); if (UI.page === 'revenue') drawRevenue(); if (SHEET) drawSheet(); }, 120); }).observe($('#content'));
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') markSeen(); });
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => render());
 
   if (hasChrome) {
-    chrome.storage.onChanged.addListener(async (ch, area) => { if (area !== 'local') return; const wait = HOLD - Date.now(); if (wait > 0) await new Promise(r => setTimeout(r, wait)); await load(); if (ch.settings && !ch.snaps && !ch.ledger) { if (UI.page === 'records') drawSide(); else render(); return; } render(); refreshStatus(); });
-    if (chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(m => { if (m.type === 'progress') { STATUS.run = m.run; drawSide(); } if (m.type === 'done') refreshStatus(); if (m.type === 'grantProgress' && UI.page === 'revenue') { GRANT_PROG = m.text; const el = document.querySelector('#gFind'); if (el) { el.disabled = !!m.text; el.closest('.group-row').querySelector('.sub').textContent = m.text || '다 찾았어요'; } } });
+    chrome.storage.onChanged.addListener(async (ch, area) => { if (area !== 'local') return; const wait = HOLD - Date.now(); if (wait > 0) await new Promise(r => setTimeout(r, wait)); await load(); if (ch.cmt && Object.keys(ch).length === 1) { drawNavCount(); if (UI.page === 'comments' && !CM().open && !CM().checking && !(document.activeElement && document.activeElement.id === 'cq')) drawComments(); return; } if (ch.settings && !ch.snaps && !ch.ledger) { if (UI.page === 'records') drawSide(); else render(); return; } render(); refreshStatus(); });
+    if (chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(m => { if (m.type === 'progress') { STATUS.run = m.run; drawSide(); } if (m.type === 'done') refreshStatus(); if (m.type === 'cmtProgress' && UI.page === 'comments' && CM().checking) { CM().prog = m.text; const b = document.querySelector('#cCheck span') || document.querySelector('#cCheck'); if (b && m.text) b.textContent = m.text; } if (m.type === 'grantProgress' && UI.page === 'revenue') { GRANT_PROG = m.text; const el = document.querySelector('#gFind'); if (el) { el.disabled = !!m.text; el.closest('.group-row').querySelector('.sub').textContent = m.text || '다 찾았어요'; } } });
   }
 
   (async function start() {

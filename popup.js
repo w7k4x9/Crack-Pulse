@@ -9,8 +9,8 @@
   let D = { snaps: [], settings: {} }, ST = { run: {}, meta: {} }, MSG = '', UP = null;
 
   async function load() {
-    const o = await chrome.storage.local.get(['snaps', 'settings', 'grantDates', 'payout']);
-    D.snaps = (o.snaps || []).sort((a, b) => a.t - b.t); D.settings = o.settings || {}; D.grantDates = o.grantDates || {}; D.payout = o.payout || null;
+    const o = await chrome.storage.local.get(['snaps', 'settings', 'grantDates', 'payout', 'cmt']);
+    D.snaps = (o.snaps || []).sort((a, b) => a.t - b.t); D.settings = o.settings || {}; D.grantDates = o.grantDates || {}; D.payout = o.payout || null; D.cmt = o.cmt || null;
     window.hhApplyTheme(D.settings.theme);
     try { ST = await send({ type: 'status' }) || ST; } catch (e) {}
     try { UP = await send({ type: 'updateStatus' }); } catch (e) {}
@@ -35,6 +35,7 @@
     const btn = run.busy ? '받는 중…' : L && L.hard ? `쉬는 중 (${Math.ceil(L.ms / 60000)}분)` : '스냅샷 받기';
     $('#pop').innerHTML = `<div class="hd"><img src="icons/32.png" width="20" height="20" alt=""><b>펄스</b><button class="st" id="login" title="크랙 열기"><span class="dot ${ST.loggedIn ? 'ok' : 'no'}"></span>${ST.loggedIn ? '크랙 로그인됨' : '로그인 필요'}</button></div>
       ${money}
+      ${(() => { const st = window.PulseCmtCore.stats(D.cmt); if (!D.cmt || !D.cmt.checkedAt) return ''; return `<button class="btn cmt-b" id="cmt"><span>${st.need ? `답글이 필요한 댓글 <b>${st.need}</b>개` : st.react ? `내 답글 뒤 반응 <b>${st.react}</b>개` : '답글 기다리는 댓글 없음'}</span>${st.fresh ? `<span class="nb">새 ${st.fresh}</span>` : ''}<span class="faint">›</span></button>`; })()}
       ${UP && UP.available ? `<button class="btn" id="upd" style="width:100%;color:var(--accent)">새 버전 ${esc(UP.latest)} 업데이트</button>` : ''}
       <div class="meta"><span>마지막 기록 ${ago(m.lastTaken || (last && last.t))}</span><span>자동 ${D.settings.auto ? '하루 ' + D.settings.auto + '번' : '꺼짐'}</span></div>
       ${run.busy ? `<div class="prog">${esc(run.text || '')}</div>` : ''}
@@ -43,6 +44,7 @@
     $('#login').onclick = () => send({ type: 'openCrack' });
     $('#dash').onclick = () => { send({ type: 'openDashboard' }); window.close(); };
     $('#snap').onclick = snap;
+    const cb = $('#cmt'); if (cb) cb.onclick = () => { send({ type: 'openComments' }); window.close(); };
     const u = $('#upd'); if (u) u.onclick = () => { send({ type: 'openUpdate' }); window.close(); };
   }
   async function snap() {
