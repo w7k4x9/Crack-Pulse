@@ -467,7 +467,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     if (msg.type === 'cmtStatus') return { busy: CMT_BUSY };
     if (msg.type === 'replyComment') return replyComment(msg);
     if (msg.type === 'likeComment') return likeComment(msg);
-    if (msg.type === 'cmtSeen') return cmtPatch(C => { C.seenAt = Math.max(C.seenAt || 0, msg.at || Date.now()); });
+    if (msg.type === 'cmtSeen') { const C = await cmtGet(); if (!cmtCounts(C).fresh) return { ok: true }; return cmtPatch(C => { C.seenAt = Math.max(C.seenAt || 0, msg.at || Date.now()); }); }
     if (msg.type === 'cmtDone') return cmtPatch(C => { const T = C.threads[msg.id]; if (T) T.done = msg.undo ? 0 : Date.now(); });
     if (msg.type === 'openComments') { await openComments(); return { ok: true }; }
     if (msg.type === 'clearError') { await setMeta({ lastError: null }); badge(''); return { ok: true }; }

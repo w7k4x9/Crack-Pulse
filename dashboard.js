@@ -111,9 +111,12 @@
   // ---------- 댓글 ----------
   const CM = () => window.PulseCmt.S;
   const cmtCtx = () => ({ C: DATA.cmt, UI, seg, settings: DATA.settings });
-  let seenT = null;
-  function markSeen() { clearTimeout(seenT); seenT = setTimeout(() => { if (UI.page === 'comments' && document.visibilityState === 'visible' && DATA.cmt && DATA.cmt.checkedAt) send({ type: 'cmtSeen', at: Date.now() }); }, 1500); }
-  function drawComments() { if (UI.page !== 'comments') return; $('#content').innerHTML = window.PulseCmt.page(cmtCtx()); $('#tbTools').innerHTML = window.PulseCmt.tools(cmtCtx()); $('#pageSub').textContent = window.PulseCmt.sub(cmtCtx()); bindCmtInputs(); window.PulseCmt.fold(); drawNavCount(); markSeen(); }
+  let seenT = null, LAST_SIG = '';
+  // 보이는 내용이 바뀌었는지: 확인 시각, 스레드마다 답글 수·좋아요·넘기기·내 답글 (seenAt만 바뀐 건 무시)
+  const cmtSig = () => { const C = DATA.cmt; if (!C) return ''; return C.checkedAt + '|' + Object.values(C.threads || {}).map(T => T.id + ':' + (T.replies || []).length + ':' + T.likes + ':' + (T.liked ? 1 : 0) + ':' + (T.done || 0) + ':' + (T.repliedAt || 0)).join(','); };
+  // 새로 온 게 있을 때만 "여기까지 봤어요"를 저장 (없으면 저장하지 않아서 화면이 다시 그려지지 않음)
+  function markSeen() { clearTimeout(seenT); seenT = setTimeout(() => { if (UI.page === 'comments' && document.visibilityState === 'visible' && DATA.cmt && DATA.cmt.checkedAt && window.PulseCmtCore.stats(DATA.cmt).fresh) send({ type: 'cmtSeen', at: Date.now() }); }, 1500); }
+  function drawComments() { if (UI.page !== 'comments') return; $('#content').innerHTML = window.PulseCmt.page(cmtCtx()); $('#tbTools').innerHTML = window.PulseCmt.tools(cmtCtx()); $('#pageSub').textContent = window.PulseCmt.sub(cmtCtx()); bindCmtInputs(); window.PulseCmt.fold(); drawNavCount(); LAST_SIG = cmtSig(); markSeen(); }
   function bindCmtInputs() {
     const q = $('#cq'); if (q) q.oninput = () => { UI.cq = q.value; $('#content').innerHTML = window.PulseCmt.page(cmtCtx()); bindCmtInputs(); window.PulseCmt.fold(); };
     const w = $('#cWork'); if (w) w.onchange = () => { UI.cwork = w.value; saveUI(); drawComments(); };
@@ -548,7 +551,7 @@
     if (!empty) { if (page === 'revenue') drawHeroCharts(); if (page === 'overview') drawDaily(); if (page === 'revenue') drawRevenue(); }
     bindDrop();
     const q = $('#q'); if (q) q.oninput = () => { UI.q = q.value; $('#content').innerHTML = pageWorks(); };
-    if (page === 'comments') { bindCmtInputs(); window.PulseCmt.fold(); markSeen(); }
+    if (page === 'comments') { bindCmtInputs(); window.PulseCmt.fold(); LAST_SIG = cmtSig(); markSeen(); }
     if (SHEET) drawSheet();
     drawSide();
   }
@@ -631,7 +634,7 @@
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => render());
 
   if (hasChrome) {
-    chrome.storage.onChanged.addListener(async (ch, area) => { if (area !== 'local') return; const wait = HOLD - Date.now(); if (wait > 0) await new Promise(r => setTimeout(r, wait)); await load(); if (ch.cmt && Object.keys(ch).length === 1) { drawNavCount(); if (UI.page === 'comments' && !CM().open && !CM().checking && !(document.activeElement && document.activeElement.id === 'cq')) drawComments(); return; } if (ch.settings && !ch.snaps && !ch.ledger) { if (UI.page === 'records') drawSide(); else render(); return; } render(); refreshStatus(); });
+    chrome.storage.onChanged.addListener(async (ch, area) => { if (area !== 'local') return; const wait = HOLD - Date.now(); if (wait > 0) await new Promise(r => setTimeout(r, wait)); await load(); if (ch.cmt && Object.keys(ch).length === 1) { drawNavCount(); const sig = cmtSig(); if (sig === LAST_SIG) return; LAST_SIG = sig; if (UI.page === 'comments' && !CM().open && !CM().checking && !(document.activeElement && document.activeElement.id === 'cq')) drawComments(); return; } if (ch.settings && !ch.snaps && !ch.ledger) { if (UI.page === 'records') drawSide(); else render(); return; } render(); refreshStatus(); });
     if (chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(m => { if (m.type === 'progress') { STATUS.run = m.run; drawSide(); } if (m.type === 'done') refreshStatus(); if (m.type === 'cmtProgress' && UI.page === 'comments' && CM().checking) { CM().prog = m.text; const b = document.querySelector('#cCheck span') || document.querySelector('#cCheck'); if (b && m.text) b.textContent = m.text; } if (m.type === 'grantProgress' && UI.page === 'revenue') { GRANT_PROG = m.text; const el = document.querySelector('#gFind'); if (el) { el.disabled = !!m.text; el.closest('.group-row').querySelector('.sub').textContent = m.text || '다 찾았어요'; } } });
   }
 
