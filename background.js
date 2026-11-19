@@ -230,6 +230,7 @@ async function checkComments({ manual = false } = {}) {
   const m = await meta(); if ((m.blockedUntil || 0) > Date.now()) return { ok: false, blocked: true, error: '크랙이 요청을 막아서 쉬는 중이에요.' };
   const token = await getToken(); if (!token) return { ok: false, login: true, error: '크랙에 로그인되어 있지 않아요.' };
   CMT_BUSY = true;
+  const keep = setInterval(() => chrome.runtime.getPlatformInfo(() => {}), 20000);
   const tell = text => chrome.runtime.sendMessage({ type: 'cmtProgress', text }).catch(() => {});
   try {
     const prev = await cmtGet(), first = !prev.checkedAt, now = Date.now();
@@ -318,7 +319,7 @@ async function checkComments({ manual = false } = {}) {
     if (e.blocked) { await setMeta({ blockedUntil: Date.now() + BLOCK_HOURS * 3600000 }); return { ok: false, blocked: true, error: '크랙이 요청을 막은 것 같아요. 3시간 쉬어요.' }; }
     const C = await cmtGet(); C.lastError = { at: Date.now(), text: String(e.message || e) }; await set({ cmt: C });
     return { ok: false, error: String(e.message || e) };
-  } finally { CMT_BUSY = false; tell(''); }
+  } finally { CMT_BUSY = false; clearInterval(keep); tell(''); }
 }
 async function notifyComments(list) {
   const s = await settings(); if (s.cmtNotify === false || !chrome.notifications) return;
@@ -444,6 +445,8 @@ chrome.runtime.onInstalled.addListener(async d => {
   if (d.reason === 'update' && (await chrome.storage.local.get('updateApplied')).updateApplied) chrome.tabs.create({ url: chrome.runtime.getURL('update.html#done') });
   self.PulseUpdate.check({ force: true }).catch(() => {});
 });
+// 대시보드에서 "다시 켜기"를 눌렀으면, 다시 켜진 뒤 그 화면을 다시 열어 줌
+chrome.storage.local.get('reopen').then(async ({ reopen }) => { if (!reopen) return; await chrome.storage.local.remove('reopen'); chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html#' + reopen) }); });
 chrome.runtime.onStartup.addListener(() => { ensureAlarm(); autoCheck().finally(() => cmtAuto().catch(() => {})); self.PulseUpdate.check().catch(() => {}); });
 
 // ---------- 메시지 ----------

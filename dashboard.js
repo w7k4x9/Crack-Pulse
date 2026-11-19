@@ -124,19 +124,27 @@
   }
   async function checkComments() {
     const S = CM(); if (S.checking) return; S.checking = true; S.prog = '확인 중'; drawComments();
-    const r = await send({ type: 'checkComments' }); S.checking = false; S.prog = '';
+    let r = null; try { r = await send({ type: 'checkComments' }); } catch (e) { r = { ok: false, error: String(e && e.message || e) }; }
+    S.checking = false; S.prog = '';
     await load(); drawComments();
-    if (!r) return;
+    if (!r) { needReload(); return; }
     if (r.ok) toast(r.added ? `새 댓글 ${r.added}개 · 답글 기다리는 댓글 ${r.need}개` : `작품 ${r.works}개 확인 · 답글 기다리는 댓글 ${r.need}개`);
     else if (r.login) { if (await dialog('크랙 로그인이 필요해요', '크랙을 열어 로그인한 뒤 다시 눌러 주세요.', '크랙 열기')) send({ type: 'openCrack' }); }
     else toast(r.error || '확인하지 못했어요');
+  }
+  // 파일만 바뀌고 펄스를 다시 켜지 않으면, 백그라운드는 예전 코드라 댓글 요청에 대답이 없음 → 다시 켜기
+  async function needReload() {
+    if (!(await dialog('펄스를 한 번 다시 켜야 해요', '새 버전 파일은 들어왔는데, 펄스가 아직 예전 버전으로 돌고 있어요. 다시 켜면 댓글 화면이 다시 열려요. 기록과 설정은 그대로예요.', '다시 켜기'))) return;
+    await chrome.storage.local.set({ reopen: 'comments' });
+    chrome.runtime.reload();
   }
   async function sendReply(id) {
     const S = CM(), text = (S.drafts[id] || '').trim();
     if (!text || S.busy[id]) return;
     S.busy[id] = 'send'; S.err[id] = ''; drawComments();
-    const r = await send({ type: 'replyComment', id, content: text });
+    let r = null; try { r = await send({ type: 'replyComment', id, content: text }); } catch (e) { r = { ok: false, error: String(e && e.message || e) }; }
     S.busy[id] = null;
+    if (!r) { drawComments(); needReload(); return; }
     if (r && r.ok) { delete S.drafts[id]; S.open = null; S.kept.set(id, (window.PulseCmtCore.level(DATA.cmt.threads[id]) || 'reply')); await load(); drawComments(); toast('답글을 올렸어요'); }
     else { S.err[id] = (r && r.error) || '답글을 올리지 못했어요'; drawComments(); const ta = document.querySelector(`[data-cdraft="${id}"]`); if (ta) ta.focus(); }
   }
@@ -631,6 +639,7 @@
     UI.page = location.hash.slice(1) || 'overview';
     if (UI.cal) UI.cal.sel = null; UI.ledAll = UI.recAll = false;
     await load(); render(); await refreshStatus(); setInterval(refreshStatus, 60000);
+    try { const cs = await send({ type: 'cmtStatus' }); if (!cs && UI.page === 'comments') needReload(); } catch (e) {}
     // 시리즈나 매입일을 아직 모르는 오리지널 작품이 있으면 조용히 한 번 찾아 둠
     try { if (MODEL && MODEL.grant && MODEL.grant.list.some(g => !g.seriesChecked || !g.checked) && STATUS.loggedIn) send({ type: 'findGrantDates' }); } catch (e) {}
   })();
